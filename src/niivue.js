@@ -1151,6 +1151,7 @@ Niivue.prototype.dropListener = async function (e) {
   if (url) {
     urlsToLoad.push(url);
     let volume = await NVImage.loadFromUrl({ url: url });
+    
     this.setVolume(volume);
   } else {
     //const files = dt.files;

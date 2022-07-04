@@ -1,3 +1,32 @@
+export var vertOrientCubeShader = `#version 300 es
+// an attribute is an input (in) to a vertex shader.
+// It will receive data from a buffer
+layout(location=0)  in vec3 a_position;
+layout(location=1)  in vec3 a_color;
+// A matrix to transform the positions by
+uniform mat4 u_matrix;
+out vec3 vColor;
+// all shaders have a main function
+void main() {
+  // Multiply the position by the matrix.
+  gl_Position = u_matrix * vec4(a_position, 1.0);
+  vColor = a_color;
+}
+`;
+
+export var fragOrientCubeShader = `#version 300 es
+precision highp float;
+
+uniform vec4 u_color;
+in vec3 vColor;
+// we need to declare an output for the fragment shader
+out vec4 outColor;
+
+void main() {
+  outColor = vec4(vColor, 1.0);
+}
+`;
+
 export var vertRenderShader = `#version 300 es
 #line 4
 layout(location=0) in vec3 pos;

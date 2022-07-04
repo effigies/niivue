@@ -45,7 +45,10 @@ import {
   fragSurfaceShader,
   fragDepthPickingShader,
   fragVolumePickingShader,
+  vertOrientCubeShader,
+  fragOrientCubeShader
 } from "./shader-srcs.js";
+import { orientCube } from "./orientCube.js";
 import { Subject } from "rxjs";
 import { NiivueObject3D } from "./niivue-object3D.js";
 import { NiivueShader3D } from "./niivue-shader3D";
@@ -3397,6 +3400,7 @@ Niivue.prototype.init = async function () {
 
   this.lineShader = new Shader(this.gl, vertLineShader, fragLineShader);
   this.graphShader = new Shader(this.gl, vertGraphShader, fragLineShader);
+  this.orientCubeShader = new Shader(this.gl, vertOrientCubeShader, fragOrientCubeShader)
   // render shader (3D)
   this.renderShader = new Shader(this.gl, vertRenderShader, fragRenderShader);
   this.renderShader.use(this.gl);
@@ -5808,9 +5812,11 @@ Niivue.prototype.draw3D = function (leftTopWidthHeight = [0, 0, 0, 0]) {
     " elevation: " +
     this.scene.renderElevation.toFixed(0);
   this.drawGraph();
+  this.drawOrientationCube(mvpMatrix)
   //bus.$emit('crosshair-pos-change', posString);
   this.readyForSync = true;
   this.sync();
+
   return posString;
 }; // draw3D()
 
@@ -5890,6 +5896,57 @@ Niivue.prototype.drawMesh3D = function (
   gl.depthFunc(gl.ALWAYS);
   this.readyForSync = true;
 }; //drawMesh3D()
+
+Niivue.prototype.drawOrientationCube = function(
+  mvpMtx
+){
+  let count = 168
+  let gl = this.gl
+  this.orientCubeShader.use(this.gl)
+  let program = this.orientCubeShader.program
+  // look up where the vertex data needs to go.
+  var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+  var colorAttributeLocation = gl.getAttribLocation(program, "a_color");
+  // look up uniform locations
+  //var colorLocation = gl.getUniformLocation(program, "u_color");
+  var matrixLocation = gl.getUniformLocation(program, "u_matrix");
+  // Create a buffer
+  var positionBuffer = gl.createBuffer();
+  let vao = gl.createVertexArray()
+  gl.bindVertexArray(vao)
+  // Turn on the attribute
+  gl.enableVertexAttribArray(positionAttributeLocation);
+  gl.enableVertexAttribArray(colorAttributeLocation);
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    orientCube, 
+    gl.STATIC_DRAW)
+
+  // Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+  var size = 3;          // 3 components per iteration
+  var type = gl.FLOAT;   // the data is 32bit floats
+  var normalize = false; // don't normalize the data
+  var stride = 24;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+  var offset = 0;        // start at the beginning of the buffer
+  gl.vertexAttribPointer(
+      positionAttributeLocation, size, type, normalize, stride, offset);
+  var offset = 12;        // start at the beginning of the buffer
+  gl.vertexAttribPointer(
+      colorAttributeLocation, size, type, normalize, stride, offset);
+  
+  
+
+  let mats = this.calculateMvpMatrix(false, [0, 0, gl.canvas.width, gl.canvas.height])
+  mvpMtx = mats[0]
+  mat.mat4.translate(mvpMtx, mvpMtx, mat.vec3.fromValues(0, 125, -50))
+  mat.mat4.scale(mvpMtx, mvpMtx, mat.vec3.fromValues(10,10,10))
+  gl.uniformMatrix4fv(matrixLocation, false, mats[0]);
+  console.log(mats)
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, count)
+  
+}
 
 Niivue.prototype.drawCrosshairs3D = function (
   isDepthTest = true,

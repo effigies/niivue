@@ -5900,6 +5900,9 @@ Niivue.prototype.drawMesh3D = function (
 Niivue.prototype.drawOrientationCube = function(
   mvpMtx
 ){
+  let leftPx = 0;
+  let bottomPx = 0;
+  let sz = 30;
   let count = 168
   let gl = this.gl
   this.orientCubeShader.use(this.gl)
@@ -5935,17 +5938,36 @@ Niivue.prototype.drawOrientationCube = function(
   var offset = 12;        // start at the beginning of the buffer
   gl.vertexAttribPointer(
       colorAttributeLocation, size, type, normalize, stride, offset);
-  
-  
 
-  let mats = this.calculateMvpMatrix(false, [0, 0, gl.canvas.width, gl.canvas.height])
-  mvpMtx = mats[0]
-  mat.mat4.translate(mvpMtx, mvpMtx, mat.vec3.fromValues(0, 125, -50))
-  mat.mat4.scale(mvpMtx, mvpMtx, mat.vec3.fromValues(10,10,10))
-  gl.uniformMatrix4fv(matrixLocation, false, mats[0]);
-  console.log(mats)
+  function deg2rad(deg) {
+    return deg * (Math.PI / 180.0);
+  }
+  let modelMatrix = mat.mat4.create();
+  let projectionMatrix = mat.mat4.create();
+  let leftTopWidthHeight = [0,0,gl.canvas.width,gl.canvas.height];
+  mat.mat4.ortho(projectionMatrix, 0, gl.canvas.width, 0, gl.canvas.height, -10*sz, 10*sz);
+  let translateVec3 = mat.vec3.fromValues(0, 0, sz*8); // push away from camera: deep into screen
+  mat.mat4.translate(modelMatrix, modelMatrix, translateVec3);
+  translateVec3 = mat.vec3.fromValues(1.8*sz+leftPx,1.8*sz+bottomPx,0); // push away from corner of screen
+  mat.mat4.translate(modelMatrix, modelMatrix, translateVec3);
+  let zoomVec3 = mat.vec3.fromValues(sz, sz, sz);
+  mat.mat4.scale(modelMatrix, modelMatrix, zoomVec3);
+  //apply elevation
+  mat.mat4.rotateX(
+    modelMatrix,
+    modelMatrix,
+    deg2rad(this.scene.renderElevation-90)
+  );
+  //apply azimuth
+  mat.mat4.rotateZ(
+    modelMatrix,
+    modelMatrix,
+    deg2rad(this.scene.renderAzimuth - 180)
+  );
+  let modelViewProjectionMatrix = mat.mat4.create();
+  mat.mat4.multiply(modelViewProjectionMatrix, projectionMatrix, modelMatrix);
+  gl.uniformMatrix4fv(matrixLocation, false, modelViewProjectionMatrix);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, count)
-  
 }
 
 Niivue.prototype.drawCrosshairs3D = function (

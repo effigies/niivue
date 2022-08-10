@@ -365,6 +365,9 @@ export function Niivue(options = {}) {
   this.serverConnection$ = null;
   this.interval$ = null;
   this.mediaUrlMap = new Map();
+  this.sessionCreatedCallbacks = [];
+  this.sessionJoinedCallbacks = [];
+  this.users = [];
 
   this.initialized = false;
   // loop through known Niivue properties
@@ -601,11 +604,11 @@ Niivue.prototype.setUpdateInterval = function () {
   });
 };
 
-Niivue.prototype.handleMessage = function (
-  msg,
-  sessionCreatedCallback,
-  sessionJoinedCallback
-) {
+Niivue.prototype.handleMessage = function (msg) {
+  if (!["update", "ack"].includes(msg["op"])) {
+    console.log(msg);
+  }
+
   switch (msg["op"]) {
     case UPDATE:
       this.scene.renderAzimuth = msg["azimuth"];
@@ -616,13 +619,12 @@ Niivue.prototype.handleMessage = function (
       break;
 
     case CREATE:
-      console.log(msg);
       if (!msg["isError"]) {
         this.isInSession = true;
         this.sessionKey = msg["key"];
         this.setUpdateInterval();
       }
-      if (sessionCreatedCallback) {
+      for (const sessionCreatedCallback of this.sessionCreatedCallbacks) {
         sessionCreatedCallback(
           msg["message"],
           msg["url"],
@@ -639,14 +641,15 @@ Niivue.prototype.handleMessage = function (
       if (this.isController) {
         this.setUpdateInterval();
       }
-
-      if (sessionJoinedCallback) {
-        sessionJoinedCallback(
-          msg["message"],
-          msg["url"],
-          msg["isController"],
-          msg["userKey"]
-        );
+      console.log("session joined");
+      console.log(msg);
+      for (const sessionJoinedCallback of this.sessionJoinedCallbacks) {
+          sessionJoinedCallback(
+            msg["message"],
+            msg["url"],
+            msg["isController"],
+            msg["userKey"]
+          );
       }
       break;
 
@@ -666,12 +669,14 @@ Niivue.prototype.handleMessage = function (
         }
       }
       break;
-    case REMOVE_MESH_URL: {
-      let mesh = this.getMediaByUrl(msg["url"]);
-      if (mesh) {
-        this.removeMesh(mesh, false);
+    case REMOVE_MESH_URL:
+      {
+        let mesh = this.getMediaByUrl(msg["url"]);
+        if (mesh) {
+          this.removeMesh(mesh, false);
+        }
       }
-    }
+      break;
     case SET_4D_VOL_INDEX:
       {
         let volume = this.getMediaByUrl(msg["url"]);
@@ -680,24 +685,23 @@ Niivue.prototype.handleMessage = function (
         }
       }
       break;
-    case UPDATE_IMAGE_OPTIONS: {
-      let volume = this.getMediaByUrl(msg["urlImageOptions"].url);
-      if (volume) {
-        volume.applyOptionsUpdate(msg["urlImageOptions"]);
-        this.updateGLVolume();
+    case UPDATE_IMAGE_OPTIONS:
+      {
+        let volume = this.getMediaByUrl(msg["urlImageOptions"].url);
+        if (volume) {
+          volume.applyOptionsUpdate(msg["urlImageOptions"]);
+          this.updateGLVolume();
+        }
       }
-    }
+      break;
   }
 };
 
 // Internal function called after a connection with the server has been made
-Niivue.prototype.subscribeToServer = function (
-  sessionCreatedCallback,
-  sessionJoinedCallback
-) {
+Niivue.prototype.subscribeToServer = function () {
   this.serverConnection$.subscribe({
     next: (msg) => {
-      this.handleMessage(msg, sessionCreatedCallback, sessionJoinedCallback);
+      this.handleMessage(msg);
     }, // Called whenever there is a message from the server.
     error: (err) => console.log(err), // Called if at any point WebSocket API signals some kind of error.
     complete: () => console.log("complete"), // Called when connection is closed (for whatever reason).
@@ -717,9 +721,9 @@ Niivue.prototype.createSession = function (
   sessionCreatedCallback
 ) {
   this.connectToServer(wsServerUrl, sessionName);
-
+  this.sessionCreatedCallbacks.push(sessionCreatedCallback);
   // subscribe to any messages from the server
-  this.subscribeToServer(sessionCreatedCallback);
+  this.subscribeToServer();
 
   // tell the server we want to create a sesion
   this.serverConnection$.next(new NVMessage(CREATE));
@@ -737,13 +741,15 @@ Niivue.prototype.joinSession = function (
   key,
   sessionJoinedCallback
 ) {
-  this.connectToServer(wsServerUrl, sessionName);
-
+  this.connectToServer(wsServerUrl, sessionName);  
+  this.sessionJoinedCallbacks.push(sessionJoinedCallback);
   // subscribe to any messages from the server
-  this.subscribeToServer(null, sessionJoinedCallback);
+  this.subscribeToServer();
 
   // tell the server we want to create a sesion
-  this.serverConnection$.next(new NVMessage(JOIN, key));
+  let msg = new NVMessage(JOIN, key);
+  console.log(msg);
+  this.serverConnection$.next(msg);
 };
 
 /**
@@ -5960,7 +5966,32 @@ Niivue.prototype.draw2DMM = function (
   this.readyForSync = true;
 }; // draw2DMM()
 
-Niivue.prototype.drawCro;
+// not included in public docs
+// draw 2D crosshairs
+Niivue.prototype.drawCrosshairs2D = function (leftTopWidthHeight, crossXYZ) {
+  let gl = this.gl;
+  //vertical line of crosshair:
+  var xleft = leftTopWidthHeight[0] + leftTopWidthHeight[2] * crossXYZ[0];
+  gl.uniform4f(
+    this.rectShader.leftTopWidthHeightLoc,
+    xleft - 0.5 * this.opts.crosshairWidth,
+    leftTopWidthHeight[1],
+    this.opts.crosshairWidth,
+    leftTopWidthHeight[3]
+  );
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  //horizontal line of crosshair:
+  var xtop =
+    leftTopWidthHeight[1] + leftTopWidthHeight[3] * (1.0 - crossXYZ[1]);
+  gl.uniform4f(
+    this.rectShader.leftTopWidthHeightLoc,
+    leftTopWidthHeight[0],
+    xtop - 0.5 * this.opts.crosshairWidth,
+    leftTopWidthHeight[2],
+    this.opts.crosshairWidth
+  );
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+};
 
 // not included in public docs
 // draw 2D tile in voxel space
@@ -6059,27 +6090,14 @@ Niivue.prototype.draw2DVox = function (
     gl.canvas.width,
     gl.canvas.height,
   ]);
-  //vertical line of crosshair:
-  var xleft = leftTopWidthHeight[0] + leftTopWidthHeight[2] * crossXYZ[0];
-  gl.uniform4f(
-    this.rectShader.leftTopWidthHeightLoc,
-    xleft - 0.5 * this.opts.crosshairWidth,
-    leftTopWidthHeight[1],
-    this.opts.crosshairWidth,
-    leftTopWidthHeight[3]
-  );
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  //horizontal line of crosshair:
-  var xtop =
-    leftTopWidthHeight[1] + leftTopWidthHeight[3] * (1.0 - crossXYZ[1]);
-  gl.uniform4f(
-    this.rectShader.leftTopWidthHeightLoc,
-    leftTopWidthHeight[0],
-    xtop - 0.5 * this.opts.crosshairWidth,
-    leftTopWidthHeight[2],
-    this.opts.crosshairWidth
-  );
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  // draw user crosshairs
+  this.drawCrosshairs2D(leftTopWidthHeight, crossXYZ);
+  if (this.isInSession) {
+    // draw other user crosshairs
+    for (const user of this.users) {
+      console.log(user);
+    }
+  }
   gl.bindVertexArray(this.unusedVAO); //set vertex attributes
   gl.enable(gl.CULL_FACE);
   gl.enable(gl.DEPTH_TEST);

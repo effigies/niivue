@@ -13,7 +13,8 @@ export const ADD_MESH_URL = "add mesh url";
 export const REMOVE_MESH_URL = "remove mesh media";
 export const SET_4D_VOL_INDEX = "set 4d vol index";
 export const UPDATE_IMAGE_OPTIONS = "update image options";
-
+export const UPDATE_CROSSHAIRS = "update cursor";
+export const USER_JOINED = "user joined";
 /**
  * @class NVMessageUpdateData
  * @type NVMessageUpdateData

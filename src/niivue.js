@@ -368,6 +368,7 @@ export function Niivue(options = {}) {
   this.sessionCreatedCallbacks = [];
   this.sessionJoinedCallbacks = [];
   this.users = [];
+  this.userKey = "";
 
   this.initialized = false;
   // loop through known Niivue properties
@@ -622,6 +623,7 @@ Niivue.prototype.handleMessage = function (msg) {
       if (!msg["isError"]) {
         this.isInSession = true;
         this.sessionKey = msg["key"];
+        this.userKey = msg["userKey"];
         this.setUpdateInterval();
       }
       for (const sessionCreatedCallback of this.sessionCreatedCallbacks) {
@@ -637,6 +639,7 @@ Niivue.prototype.handleMessage = function (msg) {
 
     case JOIN:
       this.isInSession = true;
+      this.userKey = msg["userKey"];
       this.isController = msg["isController"];
       if (this.isController) {
         this.setUpdateInterval();

@@ -77,7 +77,7 @@
                 if (msg === 'duplicate session') {
                     console.log('session already created, joining as viewer');
                     // try to join the session instead
-                    nv1.joinSession('ws://localhost:3000', 'niivue', (msg, url, isController) => {
+                    nv1.joinSession('ws://localhost:3000', 'niivue-image-options', '', (msg, url, isController) => {
                         console.log(`Result: ${msg} connected to ${url}. Is controller: ${isController}.`)
                     });
                 }

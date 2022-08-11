@@ -54,7 +54,7 @@ export function NVMessageSet4DVolumeIndexData(url, index) {
  * NVMessage can be used to synchronize a session actions
  * @constructor
  * @param {string} messageType
- * @param {(string|NVMesssageUpdateData|NVImageFromUrlOptions|NVMeshFromUrlOptions|NVMessageSet4DVolumeIndex)} messageData
+ * @param {(string|NVMesssageUpdateData|NVImageFromUrlOptions|NVMeshFromUrlOptions|NVMessageSet4DVolumeIndex|number[])} messageData
  * @param {string} sessionKey
  */
 export function NVMessage(messageType, messageData = "", sessionKey = "") {
@@ -80,6 +80,10 @@ export function NVMessage(messageType, messageData = "", sessionKey = "") {
     case SET_4D_VOL_INDEX:
       message.url = messageData.url;
       message.index = messageData.index;
+      break;
+    case UPDATE_CROSSHAIRS:
+      message.crosshairsPos = messageData.crosshairsPos;
+      message.userKey = messageData.userKey;
       break;
   }
 

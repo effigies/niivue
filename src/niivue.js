@@ -74,6 +74,8 @@ import {
   REMOVE_MESH_URL,
   SET_4D_VOL_INDEX,
   UPDATE_IMAGE_OPTIONS,
+  UPDATE_CROSSHAIRS,
+  USER_JOINED,
 } from "./nvmessage.js";
 
 const log = new Log();
@@ -624,6 +626,7 @@ Niivue.prototype.handleMessage = function (msg) {
         this.isInSession = true;
         this.sessionKey = msg["key"];
         this.userKey = msg["userKey"];
+        this.userName = msg["userName"];
         this.setUpdateInterval();
       }
       for (const sessionCreatedCallback of this.sessionCreatedCallbacks) {
@@ -640,6 +643,8 @@ Niivue.prototype.handleMessage = function (msg) {
     case JOIN:
       this.isInSession = true;
       this.userKey = msg["userKey"];
+      this.userName = msg["userName"];
+      this.users = msg["userList"];
       this.isController = msg["isController"];
       if (this.isController) {
         this.setUpdateInterval();
@@ -647,12 +652,12 @@ Niivue.prototype.handleMessage = function (msg) {
       console.log("session joined");
       console.log(msg);
       for (const sessionJoinedCallback of this.sessionJoinedCallbacks) {
-          sessionJoinedCallback(
-            msg["message"],
-            msg["url"],
-            msg["isController"],
-            msg["userKey"]
-          );
+        sessionJoinedCallback(
+          msg["message"],
+          msg["url"],
+          msg["isController"],
+          msg["userKey"]
+        );
       }
       break;
 
@@ -696,6 +701,20 @@ Niivue.prototype.handleMessage = function (msg) {
           this.updateGLVolume();
         }
       }
+      break;
+    case UPDATE_CROSSHAIRS:
+      console.log("crosshairs update rec'd");
+      console.log(msg);
+      {
+        let userIndex = this.users.findIndex((u) => u.name === msg["userName"]);
+        if (userIndex >= 0) {
+          this.users[userIndex].crosshairsPos = msg["crosshairsPos"];
+        }
+      }
+      console.log(this.users);
+      break;
+    case USER_JOINED:
+      this.users.push(msg["user"]);
       break;
   }
 };
@@ -744,7 +763,7 @@ Niivue.prototype.joinSession = function (
   key,
   sessionJoinedCallback
 ) {
-  this.connectToServer(wsServerUrl, sessionName);  
+  this.connectToServer(wsServerUrl, sessionName);
   this.sessionJoinedCallbacks.push(sessionJoinedCallback);
   // subscribe to any messages from the server
   this.subscribeToServer();
@@ -5971,8 +5990,15 @@ Niivue.prototype.draw2DMM = function (
 
 // not included in public docs
 // draw 2D crosshairs
-Niivue.prototype.drawCrosshairs2D = function (leftTopWidthHeight, crossXYZ) {
+Niivue.prototype.drawCrosshairs2D = function (
+  leftTopWidthHeight,
+  crossXYZ,
+  color = this.opts.crosshairColor
+) {
   let gl = this.gl;
+  this.rectShader.use(this.gl);
+  gl.uniform4fv(this.rectShader.lineColorLoc, color);
+
   //vertical line of crosshair:
   var xleft = leftTopWidthHeight[0] + leftTopWidthHeight[2] * crossXYZ[0];
   gl.uniform4f(
@@ -6088,7 +6114,6 @@ Niivue.prototype.draw2DVox = function (
   if (this.opts.crosshairWidth <= 0.0) return;
   gl.bindVertexArray(this.genericVAO);
   this.rectShader.use(this.gl);
-  gl.uniform4fv(this.rectShader.lineColorLoc, this.opts.crosshairColor);
   gl.uniform2fv(this.rectShader.canvasWidthHeightLoc, [
     gl.canvas.width,
     gl.canvas.height,
@@ -6096,9 +6121,27 @@ Niivue.prototype.draw2DVox = function (
   // draw user crosshairs
   this.drawCrosshairs2D(leftTopWidthHeight, crossXYZ);
   if (this.isInSession) {
+    console.log("crossXYZ");
+    console.log(crossXYZ);
+    // notify our subscribers
+    this.serverConnection$.next(
+      new NVMessage(
+        UPDATE_CROSSHAIRS,
+        {
+          crosshairsPos: this.frac2mm(crossXYZ),
+          userKey: this.userKey,
+        },
+        this.sessionKey
+      )
+    );
     // draw other user crosshairs
     for (const user of this.users) {
       console.log(user);
+      // this.drawCrosshairs2D(
+      //   leftTopWidthHeight,
+      //   this.mm2frac(user.crosshairsPos),
+      //   user.color
+      // );
     }
   }
   gl.bindVertexArray(this.unusedVAO); //set vertex attributes

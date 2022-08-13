@@ -60,10 +60,11 @@ import defaultFontMetrics from "./fonts/Roboto-Regular.json";
 import { colortables } from "./colortables";
 export { colortables } from "./colortables";
 import { webSocket } from "rxjs/webSocket";
-import { interval } from "rxjs";
+// import { interval } from "rxjs";
 import {
   NVMessage,
-  NVMesssageUpdateData,
+  NVSceneState,
+  NVUpdateUserStateMessage,
   NVMessageSet4DVolumeIndexData,
   UPDATE,
   CREATE,
@@ -75,7 +76,12 @@ import {
   SET_4D_VOL_INDEX,
   UPDATE_IMAGE_OPTIONS,
   UPDATE_CROSSHAIRS,
+  USER_CROSSHAIRS_UPDATED,
   USER_JOINED,
+  SCENE_STATE_UPDATED,
+  UPDATE_USER_STATE,
+  USER_STATE_UPDATED,
+  NVUpdateCrosshairsPosMessage
 } from "./nvmessage.js";
 
 const log = new Log();
@@ -590,21 +596,7 @@ Niivue.prototype.connectToServer = function (wsServerUrl, sessionName) {
 // not included in public docs
 // Internal function to schedule updates to the server
 Niivue.prototype.setUpdateInterval = function () {
-  this.interval$ = interval(300);
-  this.interval$.subscribe(() => {
-    this.serverConnection$.next(
-      new NVMessage(
-        UPDATE,
-        new NVMesssageUpdateData(
-          this.scene.renderAzimuth,
-          this.scene.renderElevation,
-          this.scene.clipPlane,
-          this.volScaleMultiplier
-        ),
-        this.sessionKey
-      )
-    );
-  });
+  
 };
 
 Niivue.prototype.handleMessage = function (msg) {
@@ -626,7 +618,7 @@ Niivue.prototype.handleMessage = function (msg) {
         this.isInSession = true;
         this.sessionKey = msg["key"];
         this.userKey = msg["userKey"];
-        this.userName = msg["userName"];
+        this.userId = msg["userId"];
         this.setUpdateInterval();
       }
       for (const sessionCreatedCallback of this.sessionCreatedCallbacks) {
@@ -643,7 +635,7 @@ Niivue.prototype.handleMessage = function (msg) {
     case JOIN:
       this.isInSession = true;
       this.userKey = msg["userKey"];
-      this.userName = msg["userName"];
+      this.userId = msg["userId"];
       this.users = msg["userList"];
       this.isController = msg["isController"];
       if (this.isController) {
@@ -702,16 +694,18 @@ Niivue.prototype.handleMessage = function (msg) {
         }
       }
       break;
-    case UPDATE_CROSSHAIRS:
-      console.log("crosshairs update rec'd");
-      console.log(msg);
+    case USER_STATE_UPDATED:
+      // console.log("crosshairs update rec'd");
+      // console.log(msg);
       {
-        let userIndex = this.users.findIndex((u) => u.name === msg["userName"]);
+        let userIndex = this.users.findIndex((u) => u.id === msg["id"]);
         if (userIndex >= 0) {
+          this.users[userIndex].displayName = msg["displayName"];
+          this.users[userIndex].color = msg["color"];
           this.users[userIndex].crosshairsPos = msg["crosshairsPos"];
-        }
+        }        
       }
-      console.log(this.users);
+      // console.log(this.users);
       break;
     case USER_JOINED:
       this.users.push(msg["user"]);
@@ -6120,30 +6114,7 @@ Niivue.prototype.draw2DVox = function (
   ]);
   // draw user crosshairs
   this.drawCrosshairs2D(leftTopWidthHeight, crossXYZ);
-  if (this.isInSession) {
-    console.log("crossXYZ");
-    console.log(crossXYZ);
-    // notify our subscribers
-    this.serverConnection$.next(
-      new NVMessage(
-        UPDATE_CROSSHAIRS,
-        {
-          crosshairsPos: this.frac2mm(crossXYZ),
-          userKey: this.userKey,
-        },
-        this.sessionKey
-      )
-    );
-    // draw other user crosshairs
-    for (const user of this.users) {
-      console.log(user);
-      // this.drawCrosshairs2D(
-      //   leftTopWidthHeight,
-      //   this.mm2frac(user.crosshairsPos),
-      //   user.color
-      // );
-    }
-  }
+
   gl.bindVertexArray(this.unusedVAO); //set vertex attributes
   gl.enable(gl.CULL_FACE);
   gl.enable(gl.DEPTH_TEST);
@@ -7567,6 +7538,27 @@ Niivue.prototype.drawScene = function () {
   if (!this.initialized) {
     return; // do not do anything until we are initialized (init will call drawScene).
   }
+
+  if(this.isInSession) {
+    let sceneState = new NVSceneState(this.scene.renderAzimuth, this.scene.renderElevation, this.scene.clipPlane, this.volScaleMultiplier);
+    if(JSON.stringify(this.updatedSceneState) != JSON.stringify(sceneState)) {
+      this.serverConnection$.next(sceneState);
+      this.updatedSceneState = sceneState;
+    }
+
+    if(this.userDisplayName != this.updatedUserDisplayName || (!this.arrayEquals(this.scene.color, this.updatedSceneColor))) {
+      this.serverConnection$.next(new NVUpdateUserStateMessage(this.userId, this.userKey, this.userDisplayName, this.scene.color));
+      this.updatedUserDisplayName = this.userDisplayName;
+      this.updatedSceneColor = this.scene.color;
+    }
+
+    if(!this.arrayEquals(this.scene.crosshairPos, this.updatedUserCrosshairsPos))
+    {
+      this.serverConnection$.next(new NVUpdateCrosshairsPosMessage(this.userId, this.userKey, this.scene.crosshairPos));
+      this.updatedUserCrosshairsPos = this.scene.crosshairPos;
+    }
+  }
+
   this.colorbarHeight = 0;
   this.gl.clearColor(
     this.opts.backColor[0],

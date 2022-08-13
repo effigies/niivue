@@ -14,17 +14,25 @@ export const REMOVE_MESH_URL = "remove mesh media";
 export const SET_4D_VOL_INDEX = "set 4d vol index";
 export const UPDATE_IMAGE_OPTIONS = "update image options";
 export const UPDATE_CROSSHAIRS = "update crosshairs";
+export const USER_CROSSHAIRS_UPDATED = "crosshairs updated";
 export const USER_JOINED = "user joined";
+export const UPDATE_SCENE_STATE = "update scene state";
+export const UPDATE_USER_STATE = "update user state";
+export const USER_STATE_UPDATED = "user state updated";
+export const SCENE_STATE_UPDATED = "scene state update";
+
+
+
 /**
- * @class NVMessageUpdateData
- * @type NVMessageUpdateData
+ * @class NVSceneState
+ * @type NVSceneState
  * @constructor
  * @param {number} azimuth
  * @param {number} elevation
  * @param {number[]} clipPlane
  * @param {number} zoom
  */
-export function NVMesssageUpdateData(azimuth, elevation, clipPlane, zoom) {
+export function NVSceneState(azimuth, elevation, clipPlane, zoom) {
   return {
     azimuth,
     elevation,
@@ -33,6 +41,40 @@ export function NVMesssageUpdateData(azimuth, elevation, clipPlane, zoom) {
   };
 }
 
+/**
+ * @class NVUpdateUserStateMessage
+ * @type NVUpdateUserStateMessage
+ * @constructor
+ * @param {string} id
+ * @param {string} displayName
+ * @param {number[]} color 
+ */
+export function NVUpdateUserStateMessage(id, userKey, displayName = "", color = [1, 0, 0]) {
+  return {
+    op: UPDATE_USER_STATE,
+    id,
+    userKey,
+    displayName,
+    color,    
+  }
+}
+
+/**
+ * @class NVUpdateCrosshairsPosMessage
+ * @type NVUpdateCrosshairsPosMessage
+ * @constructor
+ * @param {string} id user id
+ * @param {string} userKey user key
+ * @param {number[]} crosshairsPos
+ */
+export function NVUpdateCrosshairsPosMessage(id,  userKey, crosshairsPos = [0.5, 0.5, 0.5]) {
+  return {
+    op: UPDATE_CROSSHAIRS,
+    id,
+    userKey,
+    crosshairsPos,    
+  }
+}
 /**
  * @class NVMessageSet4DVolumeIndex
  * @type NVMessageSet4DVolumeIndex
@@ -64,6 +106,7 @@ export function NVMessage(messageType, messageData = "", sessionKey = "") {
 
   switch (messageType) {
     case UPDATE:
+    case UPDATE_SCENE_STATE:
       Object.assign(message, messageData);
       break;
     case UPDATE_IMAGE_OPTIONS:
@@ -81,8 +124,11 @@ export function NVMessage(messageType, messageData = "", sessionKey = "") {
       message.url = messageData.url;
       message.index = messageData.index;
       break;
+    case UPDATE_USER_STATE:
+      throw "use UPDATE USER STATE MESSAGE constructor";
     case UPDATE_CROSSHAIRS:
       message.crosshairsPos = messageData.crosshairsPos;
+      message.id = messageData.id;
       message.userKey = messageData.userKey;
       break;
   }

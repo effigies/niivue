@@ -13,15 +13,13 @@ export const ADD_MESH_URL = "add mesh url";
 export const REMOVE_MESH_URL = "remove mesh media";
 export const SET_4D_VOL_INDEX = "set 4d vol index";
 export const UPDATE_IMAGE_OPTIONS = "update image options";
-export const UPDATE_CROSSHAIRS = "update crosshairs";
-export const USER_CROSSHAIRS_UPDATED = "crosshairs updated";
+export const UPDATE_CROSSHAIR_POS = "update crosshair pos";
+export const CROSSHAIR_POS_UPDATED = "crosshair pos updated";
 export const USER_JOINED = "user joined";
 export const UPDATE_SCENE_STATE = "update scene state";
 export const UPDATE_USER_STATE = "update user state";
 export const USER_STATE_UPDATED = "user state updated";
 export const SCENE_STATE_UPDATED = "scene state update";
-
-
 
 /**
  * @class NVSceneState
@@ -47,16 +45,21 @@ export function NVSceneState(azimuth, elevation, clipPlane, zoom) {
  * @constructor
  * @param {string} id
  * @param {string} displayName
- * @param {number[]} color 
+ * @param {number[]} color
  */
-export function NVUpdateUserStateMessage(id, userKey, displayName = "", color = [1, 0, 0]) {
+export function NVUpdateUserStateMessage(
+  id,
+  userKey,
+  displayName = "",
+  color = [1, 0, 0]
+) {
   return {
     op: UPDATE_USER_STATE,
     id,
     userKey,
     displayName,
-    color,    
-  }
+    color,
+  };
 }
 
 /**
@@ -65,15 +68,19 @@ export function NVUpdateUserStateMessage(id, userKey, displayName = "", color = 
  * @constructor
  * @param {string} id user id
  * @param {string} userKey user key
- * @param {number[]} crosshairsPos
+ * @param {number[]} crosshairPos
  */
-export function NVUpdateCrosshairsPosMessage(id,  userKey, crosshairsPos = [0.5, 0.5, 0.5]) {
+export function NVUpdateCrosshairPosMessage(
+  id,
+  userKey,
+  crosshairPos = [0.5, 0.5, 0.5]
+) {
   return {
-    op: UPDATE_CROSSHAIRS,
+    op: UPDATE_CROSSHAIR_POS,
     id,
     userKey,
-    crosshairsPos,    
-  }
+    crosshairPos: crosshairPos,
+  };
 }
 /**
  * @class NVMessageSet4DVolumeIndex
@@ -126,7 +133,7 @@ export function NVMessage(messageType, messageData = "", sessionKey = "") {
       break;
     case UPDATE_USER_STATE:
       throw "use UPDATE USER STATE MESSAGE constructor";
-    case UPDATE_CROSSHAIRS:
+    case UPDATE_CROSSHAIR_POS:
       message.crosshairsPos = messageData.crosshairsPos;
       message.id = messageData.id;
       message.userKey = messageData.userKey;

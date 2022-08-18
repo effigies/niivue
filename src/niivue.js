@@ -75,13 +75,11 @@ import {
   REMOVE_MESH_URL,
   SET_4D_VOL_INDEX,
   UPDATE_IMAGE_OPTIONS,
-  UPDATE_CROSSHAIRS,
-  USER_CROSSHAIRS_UPDATED,
+  CROSSHAIR_POS_UPDATED,
   USER_JOINED,
   SCENE_STATE_UPDATED,
-  UPDATE_USER_STATE,
   USER_STATE_UPDATED,
-  NVUpdateCrosshairsPosMessage
+  NVUpdateCrosshairPosMessage,
 } from "./nvmessage.js";
 
 const log = new Log();
@@ -373,9 +371,11 @@ export function Niivue(options = {}) {
   this.serverConnection$ = null;
   this.interval$ = null;
   this.mediaUrlMap = new Map();
+  this.connectedTo = "";
   this.sessionCreatedCallbacks = [];
   this.sessionJoinedCallbacks = [];
   this.users = [];
+  this.userId = "";
   this.userKey = "";
 
   this.initialized = false;
@@ -589,19 +589,26 @@ Niivue.prototype.connectToServer = function (wsServerUrl, sessionName) {
   const url = new URL(wsServerUrl);
   url.pathname = "websockets";
   url.search = "?session=" + sessionName;
-  this.serverConnection$ = webSocket(url.href);
-  console.log(url.href);
+  let lowerUrl = url.href.toLowerCase();
+  if (this.connectedTo != lowerUrl) {
+    this.serverConnection$ = webSocket(url.href);
+    this.connectedTo = lowerUrl;
+    console.log(url.href);
+  }
 };
 
 // not included in public docs
 // Internal function to schedule updates to the server
-Niivue.prototype.setUpdateInterval = function () {
-  
-};
+Niivue.prototype.setUpdateInterval = function () {};
 
 Niivue.prototype.handleMessage = function (msg) {
   if (!["update", "ack"].includes(msg["op"])) {
     console.log(msg);
+  }
+
+  // ignore messages from ourselves
+  if (msg["id"] === this.userId) {
+    return;
   }
 
   switch (msg["op"]) {
@@ -619,7 +626,7 @@ Niivue.prototype.handleMessage = function (msg) {
         this.sessionKey = msg["key"];
         this.userKey = msg["userKey"];
         this.userId = msg["userId"];
-        this.setUpdateInterval();
+        // this.setUpdateInterval();
       }
       for (const sessionCreatedCallback of this.sessionCreatedCallbacks) {
         sessionCreatedCallback(
@@ -702,13 +709,26 @@ Niivue.prototype.handleMessage = function (msg) {
         if (userIndex >= 0) {
           this.users[userIndex].displayName = msg["displayName"];
           this.users[userIndex].color = msg["color"];
-          this.users[userIndex].crosshairsPos = msg["crosshairsPos"];
-        }        
+        }
       }
       // console.log(this.users);
       break;
+    case CROSSHAIR_POS_UPDATED:
+      {
+        console.log("user crosshairs updated");
+        let userIndex = this.users.findIndex((u) => u.id === msg["id"]);
+        if (userIndex >= 0) {
+          this.users[userIndex].crosshairPos = msg["crosshairsPos"];
+          console.log("crosshairs updated");
+          this.drawScene();
+        }
+      }
+      break;
+
     case USER_JOINED:
       this.users.push(msg["user"]);
+      console.log("user added");
+      console.log(this.users);
       break;
   }
 };
@@ -1296,30 +1316,36 @@ Niivue.prototype.keyDownListener = function (e) {
       this.scene.renderElevation - 1
     );
   } else if (e.code === "KeyH" && this.sliceType !== this.sliceTypeRender) {
-    this.scene.crosshairPos[0] = this.scene.crosshairPos[0] - 0.001;
+    // this.scene.crosshairPos[0] = this.scene.crosshairPos[0] - 0.001;
+    this.decrementCrosshairPosDim(0);
     this.drawScene();
   } else if (e.code === "KeyL" && this.sliceType !== this.sliceTypeRender) {
-    this.scene.crosshairPos[0] = this.scene.crosshairPos[0] + 0.001;
+    // this.scene.crosshairPos[0] = this.scene.crosshairPos[0] + 0.001;
+    this.incrementCrosshairPosDim(0);
     this.drawScene();
   } else if (
     e.code === "KeyU" &&
     this.sliceType !== this.sliceTypeRender &&
     e.ctrlKey
   ) {
-    this.scene.crosshairPos[2] = this.scene.crosshairPos[2] + 0.001;
+    // this.scene.crosshairPos[2] = this.scene.crosshairPos[2] + 0.001;
+    this.incrementCrosshairPosDim(2);
     this.drawScene();
   } else if (
     e.code === "KeyD" &&
     this.sliceType !== this.sliceTypeRender &&
     e.ctrlKey
   ) {
-    this.scene.crosshairPos[2] = this.scene.crosshairPos[2] - 0.001;
+    // this.scene.crosshairPos[2] = this.scene.crosshairPos[2] - 0.001;
+    this.decrementCrosshairPosDim(2);
     this.drawScene();
   } else if (e.code === "KeyJ" && this.sliceType !== this.sliceTypeRender) {
-    this.scene.crosshairPos[1] = this.scene.crosshairPos[1] - 0.001;
+    // this.scene.crosshairPos[1] = this.scene.crosshairPos[1] - 0.001;
+    this.decrementCrosshairPosDim(1);
     this.drawScene();
   } else if (e.code === "KeyK" && this.sliceType !== this.sliceTypeRender) {
-    this.scene.crosshairPos[1] = this.scene.crosshairPos[1] + 0.001;
+    // this.scene.crosshairPos[1] = this.scene.crosshairPos[1] + 0.001;
+    this.incrementCrosshairPosDim(1);
     this.drawScene();
   } else if (e.code === "ArrowLeft") {
     // only works for background (first loaded image is index 0)
@@ -5039,59 +5065,22 @@ Niivue.prototype.mouseClick = function (x, y, posChange = 0, isDelta = true) {
     let texFrac = this.screenXY2TextureFrac(x, y, i);
     if (texFrac[0] < 0) continue; //click not on slice i
 
-    if (true) {
-      //user clicked on slice i
-      if (!isDelta) {
-        this.scene.crosshairPos[2 - axCorSag] = posChange;
-        this.drawScene();
-        return;
-      }
-      // scrolling... not mouse
-      if (posChange !== 0) {
-        posNow = this.scene.crosshairPos[2 - axCorSag];
-        posFuture = posNow + posChange;
-        if (posFuture > 1) posFuture = 1;
-        if (posFuture < 0) posFuture = 0;
-        this.scene.crosshairPos[2 - axCorSag] = posFuture;
-        this.drawScene();
-        this.opts.onLocationChange({
-          mm: this.frac2mm(this.scene.crosshairPos),
-          vox: this.frac2vox(this.scene.crosshairPos),
-          frac: this.scene.crosshairPos,
-          xy: [x, y],
-          values: this.volumes.map((v) => {
-            let mm = this.frac2mm(this.scene.crosshairPos);
-            let vox = v.mm2vox(mm);
-            let val = v.getValue(...vox);
-            return { name: v.name, value: val, id: v.id, mm: mm, vox: vox };
-          }),
-        });
-        return;
-      }
-      this.scene.crosshairPos = texFrac.slice();
-      if (this.opts.drawingEnabled) {
-        let pt = this.frac2vox(this.scene.crosshairPos);
-        if (this.opts.penValue < 0 || Object.is(this.opts.penValue, -0)) {
-          this.drawFloodFill(pt, Math.abs(this.opts.penValue));
-          return;
-        }
-        if (isNaN(this.drawPenLocation[0])) {
-          this.drawPenAxCorSag = axCorSag;
-          this.drawPenFillPts = [];
-          this.drawPt(...pt, this.opts.penValue);
-        } else {
-          if (
-            pt[0] === this.drawPenLocation[0] &&
-            pt[1] === this.drawPenLocation[1] &&
-            pt[2] === this.drawPenLocation[2]
-          )
-            return;
-          this.drawPenLine(pt, this.drawPenLocation, this.opts.penValue);
-        }
-        this.drawPenLocation = pt;
-        if (this.opts.isFilledPen) this.drawPenFillPts.push(pt);
-        this.refreshDrawing(false);
-      }
+    // if (true) {
+    //user clicked on slice i
+    if (!isDelta) {
+      // this.scene.crosshairPos[2 - axCorSag] = posChange;
+      this.setCrosshairPosDim(2 - axCorSag, posChange);
+      this.drawScene();
+      return;
+    }
+    // scrolling... not mouse
+    if (posChange !== 0) {
+      posNow = this.scene.crosshairPos[2 - axCorSag];
+      posFuture = posNow + posChange;
+      if (posFuture > 1) posFuture = 1;
+      if (posFuture < 0) posFuture = 0;
+      // this.scene.crosshairPos[2 - axCorSag] = posFuture;
+      this.setCrosshairPosDim(2 - axCorSag, posFuture);
       this.drawScene();
       this.opts.onLocationChange({
         mm: this.frac2mm(this.scene.crosshairPos),
@@ -5106,15 +5095,54 @@ Niivue.prototype.mouseClick = function (x, y, posChange = 0, isDelta = true) {
         }),
       });
       return;
-    } else {
-      //if click in slice i
-      // if x and y are null, likely due to a slider widget sending the posChange (no mouse info in that case)
-      if (x === null && y === null) {
-        this.scene.crosshairPos[2 - axCorSag] = posChange;
-        this.drawScene();
+    }
+    this.setCrosshairPos(texFrac.slice());
+    if (this.opts.drawingEnabled) {
+      let pt = this.frac2vox(this.scene.crosshairPos);
+      if (this.opts.penValue < 0 || Object.is(this.opts.penValue, -0)) {
+        this.drawFloodFill(pt, Math.abs(this.opts.penValue));
         return;
       }
+      if (isNaN(this.drawPenLocation[0])) {
+        this.drawPenAxCorSag = axCorSag;
+        this.drawPenFillPts = [];
+        this.drawPt(...pt, this.opts.penValue);
+      } else {
+        if (
+          pt[0] === this.drawPenLocation[0] &&
+          pt[1] === this.drawPenLocation[1] &&
+          pt[2] === this.drawPenLocation[2]
+        )
+          return;
+        this.drawPenLine(pt, this.drawPenLocation, this.opts.penValue);
+      }
+      this.drawPenLocation = pt;
+      if (this.opts.isFilledPen) this.drawPenFillPts.push(pt);
+      this.refreshDrawing(false);
     }
+    this.drawScene();
+    this.opts.onLocationChange({
+      mm: this.frac2mm(this.scene.crosshairPos),
+      vox: this.frac2vox(this.scene.crosshairPos),
+      frac: this.scene.crosshairPos,
+      xy: [x, y],
+      values: this.volumes.map((v) => {
+        let mm = this.frac2mm(this.scene.crosshairPos);
+        let vox = v.mm2vox(mm);
+        let val = v.getValue(...vox);
+        return { name: v.name, value: val, id: v.id, mm: mm, vox: vox };
+      }),
+    });
+    return;
+    // } else {
+    //   //if click in slice i
+    //   // if x and y are null, likely due to a slider widget sending the posChange (no mouse info in that case)
+    //   if (x === null && y === null) {
+    //     this.scene.crosshairPos[2 - axCorSag] = posChange;
+    //     this.drawScene();
+    //     return;
+    //   }
+    // }
   } //for i: each slice on screen
 }; // mouseClick()
 
@@ -6115,6 +6143,11 @@ Niivue.prototype.draw2DVox = function (
   // draw user crosshairs
   this.drawCrosshairs2D(leftTopWidthHeight, crossXYZ);
 
+  console.log("user list");
+  for (const user of this.users) {
+    console.log(user);
+  }
+
   gl.bindVertexArray(this.unusedVAO); //set vertex attributes
   gl.enable(gl.CULL_FACE);
   gl.enable(gl.DEPTH_TEST);
@@ -6631,8 +6664,8 @@ Niivue.prototype.depthPicker = function (leftTopWidthHeight, mvpMatrix) {
   ); // typed array to hold result
   this.selectedObjectId = rgbaPixel[3];
   if (this.selectedObjectId === this.VOLUME_ID) {
-    this.scene.crosshairPos = new Float32Array(rgbaPixel.slice(0, 3)).map(
-      (x) => x / 255.0
+    this.setCrosshairPos(
+      new Float32Array(rgbaPixel.slice(0, 3)).map((x) => x / 255.0)
     );
     return;
   }
@@ -6655,7 +6688,7 @@ Niivue.prototype.depthPicker = function (leftTopWidthHeight, mvpMatrix) {
     frac[2] > 1
   )
     return;
-  this.scene.crosshairPos = this.mm2frac(mm);
+  this.setCrosshairPos(this.mm2frac(mm));
 }; // depthPicker()
 
 // not included in public docs
@@ -7043,7 +7076,7 @@ Niivue.prototype.moveCrosshairInVox = function (x, y, z) {
   vox[0] += x;
   vox[1] += y;
   vox[2] += z;
-  this.scene.crosshairPos = this.vox2frac(vox);
+  this.setCrosshairPos(this.vox2frac(vox));
   this.drawScene();
 }; // moveCrosshairInVox()
 
@@ -7533,29 +7566,76 @@ Niivue.prototype.drawMosaic = function (mosaicStr) {
   this.opts.textHeight = labelSize;
 }; // drawMosaic()
 
+Niivue.prototype.setCrosshairPos = function (pos) {
+  this.scene.crosshairPos = pos;
+  console.log("updating crosshair pos");
+  this.serverConnection$.next(
+    new NVUpdateCrosshairPosMessage(
+      this.userId,
+      this.userKey,
+      this.scene.crosshairPos
+    )
+  );
+};
+
+Niivue.prototype.setCrosshairPosDim = function (index, val) {
+  this.scene.crosshairPos[index] = val;
+  console.log("updating crosshair pos");
+  this.serverConnection$.next(
+    new NVUpdateCrosshairPosMessage(
+      this.userId,
+      this.userKey,
+      this.scene.crosshairPos
+    )
+  );
+};
+
+Niivue.prototype.incrementCrosshairPosDim = function (
+  index,
+  increment = 0.001
+) {
+  this.setCrosshairPosDim(index, this.scene.crosshairsPos[index] + increment);
+};
+
+Niivue.prototype.decrementCrosshairPosDim = function (
+  index,
+  decrement = 0.001
+) {
+  this.setCrosshairPosDim(index, this.scene.crosshairsPos[index] - decrement);
+};
+
 // not included in public docs
 Niivue.prototype.drawScene = function () {
   if (!this.initialized) {
     return; // do not do anything until we are initialized (init will call drawScene).
   }
 
-  if(this.isInSession) {
-    let sceneState = new NVSceneState(this.scene.renderAzimuth, this.scene.renderElevation, this.scene.clipPlane, this.volScaleMultiplier);
-    if(JSON.stringify(this.updatedSceneState) != JSON.stringify(sceneState)) {
+  if (this.isInSession) {
+    let sceneState = new NVSceneState(
+      this.scene.renderAzimuth,
+      this.scene.renderElevation,
+      this.scene.clipPlane,
+      this.volScaleMultiplier
+    );
+    if (JSON.stringify(this.updatedSceneState) != JSON.stringify(sceneState)) {
       this.serverConnection$.next(sceneState);
       this.updatedSceneState = sceneState;
     }
 
-    if(this.userDisplayName != this.updatedUserDisplayName || (!this.arrayEquals(this.scene.color, this.updatedSceneColor))) {
-      this.serverConnection$.next(new NVUpdateUserStateMessage(this.userId, this.userKey, this.userDisplayName, this.scene.color));
+    if (
+      this.userDisplayName != this.updatedUserDisplayName ||
+      !this.arrayEquals(this.scene.color, this.updatedSceneColor)
+    ) {
+      this.serverConnection$.next(
+        new NVUpdateUserStateMessage(
+          this.userId,
+          this.userKey,
+          this.userDisplayName,
+          this.scene.color
+        )
+      );
       this.updatedUserDisplayName = this.userDisplayName;
       this.updatedSceneColor = this.scene.color;
-    }
-
-    if(!this.arrayEquals(this.scene.crosshairPos, this.updatedUserCrosshairsPos))
-    {
-      this.serverConnection$.next(new NVUpdateCrosshairsPosMessage(this.userId, this.userKey, this.scene.crosshairPos));
-      this.updatedUserCrosshairsPos = this.scene.crosshairPos;
     }
   }
 

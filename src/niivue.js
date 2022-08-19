@@ -377,6 +377,16 @@ export function Niivue(options = {}) {
   this.users = [];
   this.userId = "";
   this.userKey = "";
+  this.userColorMap = new Map();
+  this.userColorTable = [
+    [1.0, 0.0, 0.0],
+    [1.0, 0.5, 0.0],
+    [0.576471, 0.858824, 0.439216],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [0.294, 0, 0.51],
+    [0.309804, 0.184314, 0.309804],
+  ];
 
   this.initialized = false;
   // loop through known Niivue properties
@@ -597,6 +607,13 @@ Niivue.prototype.connectToServer = function (wsServerUrl, sessionName) {
   }
 };
 
+Niivue.prototype.assignUsersColors = function () {
+  for (let i = 0; i < this.users.length; i++) {
+    this.users[i].color =
+      this.userColorTable[Math.random() * (this.userColorTable.length - 1)];
+  }
+};
+
 // not included in public docs
 // Internal function to schedule updates to the server
 Niivue.prototype.setUpdateInterval = function () {};
@@ -642,8 +659,11 @@ Niivue.prototype.handleMessage = function (msg) {
     case JOIN:
       this.isInSession = true;
       this.userKey = msg["userKey"];
+      this.userName = msg["userName"];
       this.userId = msg["userId"];
       this.users = msg["userList"];
+      // assign users colors
+
       this.isController = msg["isController"];
       if (this.isController) {
         this.setUpdateInterval();
@@ -718,7 +738,7 @@ Niivue.prototype.handleMessage = function (msg) {
         console.log("user crosshairs updated");
         let userIndex = this.users.findIndex((u) => u.id === msg["id"]);
         if (userIndex >= 0) {
-          this.users[userIndex].crosshairPos = msg["crosshairsPos"];
+          this.users[userIndex].crosshairPos = msg["crosshairPos"];
           console.log("crosshairs updated");
           this.drawScene();
         }
@@ -726,9 +746,14 @@ Niivue.prototype.handleMessage = function (msg) {
       break;
 
     case USER_JOINED:
-      this.users.push(msg["user"]);
-      console.log("user added");
-      console.log(this.users);
+      {
+        let user = msg["user"];
+        user.color =
+          this.userColorTable[Math.random() * (this.userColorTable.length - 1)];
+        this.users.push(user);
+        console.log("user added");
+        console.log(this.users);
+      }
       break;
   }
 };
@@ -6145,7 +6170,12 @@ Niivue.prototype.draw2DVox = function (
 
   console.log("user list");
   for (const user of this.users) {
-    console.log(user);
+    // console.log(user);
+    this.drawCrosshairs2D(
+      leftTopWidthHeight,
+      this.mm2frac(user.crosshairPos),
+      user.color
+    );
   }
 
   gl.bindVertexArray(this.unusedVAO); //set vertex attributes
@@ -7573,7 +7603,7 @@ Niivue.prototype.setCrosshairPos = function (pos) {
     new NVUpdateCrosshairPosMessage(
       this.userId,
       this.userKey,
-      this.scene.crosshairPos
+      this.frac2mm(this.scene.crosshairPos)
     )
   );
 };
@@ -7622,10 +7652,7 @@ Niivue.prototype.drawScene = function () {
       this.updatedSceneState = sceneState;
     }
 
-    if (
-      this.userDisplayName != this.updatedUserDisplayName ||
-      !this.arrayEquals(this.scene.color, this.updatedSceneColor)
-    ) {
+    if (this.userDisplayName != this.updatedUserDisplayName) {
       this.serverConnection$.next(
         new NVUpdateUserStateMessage(
           this.userId,
@@ -7635,7 +7662,6 @@ Niivue.prototype.drawScene = function () {
         )
       );
       this.updatedUserDisplayName = this.userDisplayName;
-      this.updatedSceneColor = this.scene.color;
     }
   }
 

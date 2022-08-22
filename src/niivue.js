@@ -387,6 +387,8 @@ export function Niivue(options = {}) {
     [0.294, 0, 0.51],
     [0.309804, 0.184314, 0.309804],
   ];
+  this.controllerCrosshairPos = [0.5, 0.5, 0.5];
+  this.isDrawingOtherUserCrosshairs = false;
 
   this.initialized = false;
   // loop through known Niivue properties
@@ -611,6 +613,7 @@ Niivue.prototype.assignUsersColors = function () {
   for (let i = 0; i < this.users.length; i++) {
     this.users[i].color =
       this.userColorTable[Math.random() * (this.userColorTable.length - 1)];
+    this.users[i].color[3] = 0.5;
   }
 };
 
@@ -644,6 +647,7 @@ Niivue.prototype.handleMessage = function (msg) {
         this.userKey = msg["userKey"];
         this.userId = msg["userId"];
         // this.setUpdateInterval();
+        this.isController = true;
       }
       for (const sessionCreatedCallback of this.sessionCreatedCallbacks) {
         sessionCreatedCallback(
@@ -740,6 +744,9 @@ Niivue.prototype.handleMessage = function (msg) {
         if (userIndex >= 0) {
           this.users[userIndex].crosshairPos = msg["crosshairPos"];
           console.log("crosshairs updated");
+          if (msg["isController"]) {
+            this.controllerCrosshairPos = msg["crosshairPos"];
+          }
           this.drawScene();
         }
       }
@@ -6115,6 +6122,10 @@ Niivue.prototype.draw2DVox = function (
     let frac = this.mm2frac(mm);
     crossXYZ[2] = frac[sliceDim];
   }
+  let sliceIndex = crossXYZ[2];
+  if (this.isInSession && !this.isController) {
+    sliceIndex = this.mm2frac(this.controllerCrosshairPos)[sliceDim];
+  }
   let isMirrorLR =
     this.opts.isRadiologicalConvention && axCorSag < this.sliceTypeSagittal;
   if (this.opts.sagittalNoseLeft && axCorSag === this.sliceTypeSagittal)
@@ -6127,7 +6138,7 @@ Niivue.prototype.draw2DVox = function (
     this.backgroundMasksOverlays
   );
   gl.uniform1i(this.sliceShader.axCorSagLoc, axCorSag);
-  gl.uniform1f(this.sliceShader.sliceLoc, crossXYZ[2]);
+  gl.uniform1f(this.sliceShader.sliceLoc, sliceIndex);
   gl.uniform2fv(this.sliceShader.canvasWidthHeightLoc, [
     gl.canvas.width,
     gl.canvas.height,
@@ -6168,31 +6179,33 @@ Niivue.prototype.draw2DVox = function (
   // draw user crosshairs
   this.drawCrosshairs2D(leftTopWidthHeight, crossXYZ);
 
-  console.log("user list");
-  for (const user of this.users) {
-    // console.log(user);
-    let userCrosshairs = user.crosshairPos;
-    switch (axCorSag) {
-      case this.sliceTypeCoronal:
-        userCrosshairs = [
-          user.crosshairPos[0],
-          user.crosshairPos[2],
-          user.crosshairPos[1],
-        ];
-        break;
-      case this.sliceTypeSagittal:
-        userCrosshairs = [
-          this.scene.crosshairPos[1],
-          this.scene.crosshairPos[2],
-          this.scene.crosshairPos[0],
-        ];
-        break;
+  if (this.isDrawingOtherUserCrosshairs) {
+    console.log("user list");
+    for (const user of this.users) {
+      // console.log(user);
+      let userCrosshairs = user.crosshairPos;
+      switch (axCorSag) {
+        case this.sliceTypeCoronal:
+          userCrosshairs = [
+            user.crosshairPos[0],
+            user.crosshairPos[2],
+            user.crosshairPos[1],
+          ];
+          break;
+        case this.sliceTypeSagittal:
+          userCrosshairs = [
+            this.scene.crosshairPos[1],
+            this.scene.crosshairPos[2],
+            this.scene.crosshairPos[0],
+          ];
+          break;
+      }
+      this.drawCrosshairs2D(
+        leftTopWidthHeight,
+        this.mm2frac(userCrosshairs),
+        user.color
+      );
     }
-    this.drawCrosshairs2D(
-      leftTopWidthHeight,
-      this.mm2frac(userCrosshairs),
-      user.color
-    );
   }
 
   gl.bindVertexArray(this.unusedVAO); //set vertex attributes

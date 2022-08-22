@@ -6171,9 +6171,26 @@ Niivue.prototype.draw2DVox = function (
   console.log("user list");
   for (const user of this.users) {
     // console.log(user);
+    let userCrosshairs = user.crosshairPos;
+    switch (axCorSag) {
+      case this.sliceTypeCoronal:
+        userCrosshairs = [
+          user.crosshairPos[0],
+          user.crosshairPos[2],
+          user.crosshairPos[1],
+        ];
+        break;
+      case this.sliceTypeSagittal:
+        userCrosshairs = [
+          this.scene.crosshairPos[1],
+          this.scene.crosshairPos[2],
+          this.scene.crosshairPos[0],
+        ];
+        break;
+    }
     this.drawCrosshairs2D(
       leftTopWidthHeight,
-      this.mm2frac(user.crosshairPos),
+      this.mm2frac(userCrosshairs),
       user.color
     );
   }

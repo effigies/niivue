@@ -6052,7 +6052,10 @@ Niivue.prototype.drawCrosshairs2D = function (
   let gl = this.gl;
   this.rectShader.use(this.gl);
   gl.uniform4fv(this.rectShader.lineColorLoc, color);
-
+  console.log("crosshair2d");
+  console.log(crossXYZ);
+  console.log(this.frac2mm(crossXYZ));
+  console.log("end");
   //vertical line of crosshair:
   var xleft = leftTopWidthHeight[0] + leftTopWidthHeight[2] * crossXYZ[0];
   gl.uniform4f(
@@ -6182,8 +6185,13 @@ Niivue.prototype.draw2DVox = function (
   if (this.isDrawingOtherUserCrosshairs) {
     console.log("user list");
     for (const user of this.users) {
-      // console.log(user);
-      let userCrosshairs = user.crosshairPos;
+      console.log(user);
+
+      let userCrosshairs = [
+        user.crosshairPos[0],
+        user.crosshairPos[1],
+        user.crosshairPos[2],
+      ];
       switch (axCorSag) {
         case this.sliceTypeCoronal:
           userCrosshairs = [
@@ -6194,17 +6202,20 @@ Niivue.prototype.draw2DVox = function (
           break;
         case this.sliceTypeSagittal:
           userCrosshairs = [
-            this.scene.crosshairPos[1],
-            this.scene.crosshairPos[2],
-            this.scene.crosshairPos[0],
+            user.crosshairPos[1],
+            user.crosshairPos[2],
+            user.crosshairPos[0],
           ];
           break;
       }
+      let frac = this.mm2frac(userCrosshairs);
+      console.log(frac);
       this.drawCrosshairs2D(
         leftTopWidthHeight,
         this.mm2frac(userCrosshairs),
         user.color
       );
+      console.log(userCrosshairs);
     }
   }
 
@@ -7629,6 +7640,8 @@ Niivue.prototype.drawMosaic = function (mosaicStr) {
 Niivue.prototype.setCrosshairPos = function (pos) {
   this.scene.crosshairPos = pos;
   console.log("updating crosshair pos");
+  console.log(pos);
+  console.log(this.frac2mm(pos));
   this.serverConnection$.next(
     new NVUpdateCrosshairPosMessage(
       this.userId,
@@ -7645,7 +7658,8 @@ Niivue.prototype.setCrosshairPosDim = function (index, val) {
     new NVUpdateCrosshairPosMessage(
       this.userId,
       this.userKey,
-      this.scene.crosshairPos
+      this.frac2mm(this.scene.crosshairPos)
+      // this.scene.crosshairPos
     )
   );
 };

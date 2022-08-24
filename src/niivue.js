@@ -5677,6 +5677,15 @@ Niivue.prototype.drawTextBelow = function (xy, str, scale = 1, color = null) {
   this.drawText(xy, str, scale, color);
 }; // drawTextBelow()
 
+Niivue.prototype.drawTextAbove = function (xy, str, scale = 1, color = null) {
+  //horizontally centered on x, above y
+  if (this.opts.textHeight <= 0) return;
+  let size = this.opts.textHeight * this.gl.canvas.height * scale;
+  xy[0] -= 0.5 * this.textWidth(size, str);
+  xy[1] = 0;
+  this.drawText(xy, str, scale, color);
+};
+
 Niivue.prototype.updateInterpolation = function (layer) {
   let interp = this.gl.LINEAR;
   if (this.opts.isNearestInterpolation) interp = this.gl.NEAREST;
@@ -6052,10 +6061,12 @@ Niivue.prototype.drawCrosshairs2D = function (
   let gl = this.gl;
   this.rectShader.use(this.gl);
   gl.uniform4fv(this.rectShader.lineColorLoc, color);
-  console.log("crosshair2d");
-  console.log(crossXYZ);
-  console.log(this.frac2mm(crossXYZ));
-  console.log("end");
+  if (this.isInSession && this.isController) {
+    console.log("crosshair2d");
+    console.log(crossXYZ);
+    console.log(this.frac2mm(crossXYZ));
+    console.log("end");
+  }
   //vertical line of crosshair:
   var xleft = leftTopWidthHeight[0] + leftTopWidthHeight[2] * crossXYZ[0];
   gl.uniform4f(
@@ -6185,6 +6196,10 @@ Niivue.prototype.draw2DVox = function (
   console.log(axCorSag);
   if (this.isDrawingOtherUserCrosshairs) {
     console.log("user list");
+    // calculate 10mm frac
+    let tenMMFrac = this.mm2frac([5, 5, 5]);
+    console.log("ten frac is ");
+    console.log(tenMMFrac);
     for (const user of this.users) {
       console.log(user);
 
@@ -6216,16 +6231,26 @@ Niivue.prototype.draw2DVox = function (
 
       let frac = this.mm2frac(userCrosshairs);
       console.log(frac);
-      this.drawCrosshairs2D(leftTopWidthHeight, frac, user.color);
+      let crosshairsLeftTopWidthHeight = [...leftTopWidthHeight];
+      crosshairsLeftTopWidthHeight[0] +=
+        (frac[0] - tenMMFrac[0] / 2) * leftTopWidthHeight[2];
+
+      crosshairsLeftTopWidthHeight[1] +=
+        (frac[1] - tenMMFrac[1] / 2) * leftTopWidthHeight[3];
+
+      // let tenMM = this.mm2screen(10);
+      crosshairsLeftTopWidthHeight[2] = tenMMFrac[0] * leftTopWidthHeight[2];
+      crosshairsLeftTopWidthHeight[3] = tenMMFrac[1] * leftTopWidthHeight[3];
+      // this.drawCrosshairs2D(leftTopWidthHeight, frac, user.color);
+      this.drawCrosshairs2D(crosshairsLeftTopWidthHeight, frac, user.color);
+
       let xy = [
         leftTopWidthHeight[0] + leftTopWidthHeight[2] * frac[0],
         leftTopWidthHeight[1] + leftTopWidthHeight[3] * (1 - frac[1]),
       ];
-      console.log("xy is ");
-      console.log(xy);
-      this.drawTextBelow(
+      this.drawTextLeft(
         xy,
-        user.displayName.substring(0, 10),
+        user.displayName.substring(0, 10) + ">",
         1,
         Array.from(user.color)
       );
@@ -7681,14 +7706,14 @@ Niivue.prototype.incrementCrosshairPosDim = function (
   index,
   increment = 0.001
 ) {
-  this.setCrosshairPosDim(index, this.scene.crosshairsPos[index] + increment);
+  this.setCrosshairPosDim(index, this.scene.crosshairPos[index] + increment);
 };
 
 Niivue.prototype.decrementCrosshairPosDim = function (
   index,
   decrement = 0.001
 ) {
-  this.setCrosshairPosDim(index, this.scene.crosshairsPos[index] - decrement);
+  this.setCrosshairPosDim(index, this.scene.crosshairPos[index] - decrement);
 };
 
 // not included in public docs

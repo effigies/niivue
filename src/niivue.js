@@ -6181,7 +6181,8 @@ Niivue.prototype.draw2DVox = function (
   ]);
   // draw user crosshairs
   this.drawCrosshairs2D(leftTopWidthHeight, crossXYZ);
-
+  console.log("axcorsag view");
+  console.log(axCorSag);
   if (this.isDrawingOtherUserCrosshairs) {
     console.log("user list");
     for (const user of this.users) {
@@ -6199,6 +6200,7 @@ Niivue.prototype.draw2DVox = function (
             user.crosshairPos[2],
             user.crosshairPos[1],
           ];
+          console.log("Coronal");
           break;
         case this.sliceTypeSagittal:
           userCrosshairs = [
@@ -6206,14 +6208,26 @@ Niivue.prototype.draw2DVox = function (
             user.crosshairPos[2],
             user.crosshairPos[0],
           ];
+          console.log("Sagittal");
           break;
+        default:
+          console.log("Axial");
       }
+
       let frac = this.mm2frac(userCrosshairs);
       console.log(frac);
-      this.drawCrosshairs2D(
-        leftTopWidthHeight,
-        this.mm2frac(userCrosshairs),
-        user.color
+      this.drawCrosshairs2D(leftTopWidthHeight, frac, user.color);
+      let xy = [
+        leftTopWidthHeight[0] + leftTopWidthHeight[2] * frac[0],
+        leftTopWidthHeight[1] + leftTopWidthHeight[3] * (1 - frac[1]),
+      ];
+      console.log("xy is ");
+      console.log(xy);
+      this.drawTextBelow(
+        xy,
+        user.displayName.substring(0, 10),
+        1,
+        Array.from(user.color)
       );
       console.log(userCrosshairs);
     }
@@ -7659,7 +7673,6 @@ Niivue.prototype.setCrosshairPosDim = function (index, val) {
       this.userId,
       this.userKey,
       this.frac2mm(this.scene.crosshairPos)
-      // this.scene.crosshairPos
     )
   );
 };
@@ -7702,7 +7715,7 @@ Niivue.prototype.drawScene = function () {
           this.userId,
           this.userKey,
           this.userDisplayName,
-          this.scene.color
+          this.opts.crosshairColor
         )
       );
       this.updatedUserDisplayName = this.userDisplayName;

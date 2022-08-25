@@ -6058,6 +6058,16 @@ Niivue.prototype.drawCrosshairs2D = function (
   crossXYZ,
   color = this.opts.crosshairColor
 ) {
+  if (!this.arrayEquals(this.updatedCrosshairsPos, this.scene.crosshairPos)) {
+    this.serverConnection$.next(
+      new NVUpdateCrosshairPosMessage(
+        this.userId,
+        this.userKey,
+        this.frac2mm(this.scene.crosshairPos)
+      )
+    );
+    this.updatedCrosshairsPos = [...this.scene.crosshairPos];
+  }
   let gl = this.gl;
   this.rectShader.use(this.gl);
   gl.uniform4fv(this.rectShader.lineColorLoc, color);
@@ -6103,6 +6113,7 @@ Niivue.prototype.draw2DVox = function (
     //use full screen
     leftTopWidthHeight = this.scaleSlice(fovMM[0], fovMM[1]);
   }
+
   gl.cullFace(gl.FRONT);
   let ltwh = leftTopWidthHeight.slice();
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -6197,7 +6208,11 @@ Niivue.prototype.draw2DVox = function (
   if (this.isDrawingOtherUserCrosshairs) {
     console.log("user list");
     // calculate 10mm frac
-    let tenMMFrac = this.mm2frac([5, 5, 5]);
+    let tenMMFrac = this.mm2frac([10, 10, 10]);
+    let zeroMMFrac = this.mm2frac([0, 0, 0]);
+    tenMMFrac = tenMMFrac.map((v, i) => {
+      return v - zeroMMFrac[i];
+    });
     console.log("ten frac is ");
     console.log(tenMMFrac);
     for (const user of this.users) {
@@ -6208,6 +6223,8 @@ Niivue.prototype.draw2DVox = function (
         user.crosshairPos[1],
         user.crosshairPos[2],
       ];
+      let delta = tenMMFrac;
+
       switch (axCorSag) {
         case this.sliceTypeCoronal:
           userCrosshairs = [
@@ -6215,6 +6232,7 @@ Niivue.prototype.draw2DVox = function (
             user.crosshairPos[2],
             user.crosshairPos[1],
           ];
+          delta = [tenMMFrac[0], tenMMFrac[2], tenMMFrac[1]];
           console.log("Coronal");
           break;
         case this.sliceTypeSagittal:
@@ -6223,6 +6241,7 @@ Niivue.prototype.draw2DVox = function (
             user.crosshairPos[2],
             user.crosshairPos[0],
           ];
+          delta = [tenMMFrac[1], tenMMFrac[2], tenMMFrac[0]];
           console.log("Sagittal");
           break;
         default:
@@ -6233,27 +6252,31 @@ Niivue.prototype.draw2DVox = function (
       console.log(frac);
       let crosshairsLeftTopWidthHeight = [...leftTopWidthHeight];
       crosshairsLeftTopWidthHeight[0] +=
-        (frac[0] - tenMMFrac[0] / 2) * leftTopWidthHeight[2];
+        (frac[0] - delta[0] / 2) * leftTopWidthHeight[2];
 
-      crosshairsLeftTopWidthHeight[1] +=
-        (frac[1] - tenMMFrac[1] / 2) * leftTopWidthHeight[3];
+      crosshairsLeftTopWidthHeight[1] =
+        (frac[1] - delta[1] / 2) * leftTopWidthHeight[3];
 
       // let tenMM = this.mm2screen(10);
-      crosshairsLeftTopWidthHeight[2] = tenMMFrac[0] * leftTopWidthHeight[2];
-      crosshairsLeftTopWidthHeight[3] = tenMMFrac[1] * leftTopWidthHeight[3];
+      crosshairsLeftTopWidthHeight[2] = delta[0] * leftTopWidthHeight[2];
+      crosshairsLeftTopWidthHeight[3] = delta[1] * leftTopWidthHeight[3];
       // this.drawCrosshairs2D(leftTopWidthHeight, frac, user.color);
-      this.drawCrosshairs2D(crosshairsLeftTopWidthHeight, frac, user.color);
+      this.drawCrosshairs2D(
+        crosshairsLeftTopWidthHeight,
+        [0.5, 0.5, 0.5],
+        user.color
+      );
 
       let xy = [
         leftTopWidthHeight[0] + leftTopWidthHeight[2] * frac[0],
         leftTopWidthHeight[1] + leftTopWidthHeight[3] * (1 - frac[1]),
       ];
-      this.drawTextLeft(
-        xy,
-        user.displayName.substring(0, 10) + ">",
-        1,
-        Array.from(user.color)
-      );
+      // this.drawTextLeft(
+      //   xy,
+      //   user.displayName.substring(0, 10),
+      //   1,
+      //   Array.from(user.color)
+      // );
       console.log(userCrosshairs);
     }
   }
@@ -7128,6 +7151,8 @@ Niivue.prototype.drawCrosshairs3D = function (
 
 // not included in public docs
 Niivue.prototype.mm2frac = function (mm, volIdx = 0) {
+  console.log("mm2frac");
+
   //given mm, return volume fraction
   if (this.volumes.length < 1) {
     let frac = [0.1, 0.5, 0.5];
@@ -7135,6 +7160,7 @@ Niivue.prototype.mm2frac = function (mm, volIdx = 0) {
     frac[0] = (mm[0] - mn[0]) / range[0];
     frac[1] = (mm[1] - mn[1]) / range[1];
     frac[2] = (mm[2] - mn[2]) / range[2];
+
     return frac;
   }
   //convert from object space in millimeters to normalized texture space XYZ= [0..1, 0..1 ,0..1]
@@ -7142,16 +7168,23 @@ Niivue.prototype.mm2frac = function (mm, volIdx = 0) {
   let d = this.volumes[volIdx].dimsRAS;
   let frac = [0, 0, 0];
   if (typeof d === "undefined") {
+    console.log("dimRAS undefined");
     return frac;
   }
   if (d[1] < 1 || d[2] < 1 || d[3] < 1) return frac;
   let sform = mat.mat4.clone(this.volumes[volIdx].matRAS);
+  console.log("sform");
+  console.log(sform);
   mat.mat4.invert(sform, sform);
   mat.mat4.transpose(sform, sform);
   mat.vec4.transformMat4(mm4, mm4, sform);
   frac[0] = (mm4[0] + 0.5) / d[1];
   frac[1] = (mm4[1] + 0.5) / d[2];
   frac[2] = (mm4[2] + 0.5) / d[3];
+  console.log("mm");
+  console.log(mm);
+  console.log("frac");
+  console.log(frac);
   return frac;
 }; // mm2frac()
 

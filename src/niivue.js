@@ -79,8 +79,11 @@ import {
   USER_JOINED,
   SCENE_STATE_UPDATED,
   USER_STATE_UPDATED,
+  SESSION_CREATED,
+  SESSION_JOINED,
   NVUpdateCrosshairPosMessage,
 } from "./nvmessage.js";
+import { NVLocalBus } from "./nvlocalbus.js";
 
 const log = new Log();
 const cmapper = new colortables();
@@ -389,6 +392,8 @@ export function Niivue(options = {}) {
   ];
   this.controllerCrosshairPos = [0.5, 0.5, 0.5];
   this.isDrawingOtherUserCrosshairs = false;
+  this.isUsingLocalBus = false;
+  this.localBus = new NVLocalBus();
 
   this.initialized = false;
   // loop through known Niivue properties
@@ -640,6 +645,7 @@ Niivue.prototype.handleMessage = function (msg) {
       this.drawScene();
       break;
 
+    case SESSION_CREATED:
     case CREATE:
       if (!msg["isError"]) {
         this.isInSession = true;
@@ -658,8 +664,10 @@ Niivue.prototype.handleMessage = function (msg) {
           msg["userKey"]
         );
       }
+      this.sessionName = msg["sessionName"];
       break;
 
+    case SESSION_JOINED:
     case JOIN:
       this.isInSession = true;
       this.userKey = msg["userKey"];
@@ -682,6 +690,7 @@ Niivue.prototype.handleMessage = function (msg) {
           msg["userKey"]
         );
       }
+      this.sessionName = msg["sessionName"];
       break;
 
     case ADD_MESH_URL:
@@ -776,6 +785,14 @@ Niivue.prototype.subscribeToServer = function () {
   });
 };
 
+Niivue.prototype.sendServerMessage = function (message) {
+  if (this.isUsingLocalBus) {
+    this.localBus.sendMessage(message);
+  } else {
+    this.serverConnection$.next(message);
+  }
+};
+
 /**
  * Create a multiuser session
  * @param {string} wsServerUrl e.g. ws://localhost:3000
@@ -788,13 +805,20 @@ Niivue.prototype.createSession = function (
   sessionName,
   sessionCreatedCallback
 ) {
-  this.connectToServer(wsServerUrl, sessionName);
-  this.sessionCreatedCallbacks.push(sessionCreatedCallback);
-  // subscribe to any messages from the server
-  this.subscribeToServer();
+  if (wsServerUrl) {
+    this.connectToServer(wsServerUrl, sessionName);
+    this.sessionCreatedCallbacks.push(sessionCreatedCallback);
+    // subscribe to any messages from the server
+    this.subscribeToServer();
 
-  // tell the server we want to create a sesion
-  this.serverConnection$.next(new NVMessage(CREATE));
+    // tell the server we want to create a sesion
+    // this.serverConnection$.next(new NVMessage(CREATE));
+    this.sendServerMessage(new NVMessage(CREATE));
+  } else {
+    let message = new NVMessage(CREATE);
+    message.sessionName = sessionName;
+    this.localBus.sendMessage(message);
+  }
 };
 
 /**

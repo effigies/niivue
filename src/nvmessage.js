@@ -20,6 +20,9 @@ export const UPDATE_SCENE_STATE = "update scene state";
 export const UPDATE_USER_STATE = "update user state";
 export const USER_STATE_UPDATED = "user state updated";
 export const SCENE_STATE_UPDATED = "scene state update";
+export const ACK = "ack";
+export const SESSION_CREATED = "session created";
+export const SESSION_JOINED = "session joined";
 
 /**
  * @class NVSceneState

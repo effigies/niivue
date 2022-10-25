@@ -2362,6 +2362,71 @@ NVImage.prototype.saveToDisk = async function (fnm, drawing8 = null) {
 }; // saveToDisk()
 
 /**
+ * factory function to load and return a new NVImage instance from a given manifest URL
+ * @constructs NVImage
+ * @param {NVImageFromUrlOptions} options
+ */
+NVImage.loadFromManifest = async function ({
+  url = "",
+  urlImgData = "",
+  name = "",
+  colorMap = "gray",
+  opacity = 1.0,
+  cal_min = NaN,
+  cal_max = NaN,
+  trustCalMinMax = true,
+  percentileFrac = 0.02,
+  ignoreZeroVoxels = false,
+  visible = true,
+  colorMapNegative = "",
+  isManifest = false,
+} = {}) {
+  if (url === "") {
+    throw Error("url must not be empty");
+  }
+
+  let manifestUrl = new URL("", url);
+  let re = new RegExp("(?:.([^.]+))?$");
+  let extension = re.exec(manifestUrl.pathname);
+  if (extension.toUpperCase() != "TXT") {
+    manifestUrl = new URL("niivue-manifest.txt", url);
+  }
+
+  let response = await fetch(manifestUrl);  
+  let text = await response.text();
+  let lines = text.split("\n");
+
+  re = new RegExp("(.*/).*");
+  let baseUrl = re.exec(manifestUrl)[0];
+  let dataBuffer = []
+  for (const line of lines) {
+    let fileUrl = new URL(line, baseUrl);
+    response = await fetch(fileUrl);
+    let contents = await response.arrayBuffer();
+    dataBuffer.push(contents);
+  }
+  
+  let nvimage = new NVImage(
+    dataBuffer,
+    name,
+    colorMap,
+    opacity,
+    pairedImgData,
+    cal_min,
+    cal_max,
+    trustCalMinMax,
+    percentileFrac,
+    ignoreZeroVoxels,
+    visible,
+    false,
+    false,
+    colorMapNegative
+  );
+
+  return nvimage;
+};
+
+/**
  * factory function to load and return a new NVImage instance from a given URL
  * @constructs NVImage
  * @param {NVImageFromUrlOptions} options
@@ -2382,10 +2447,30 @@ NVImage.loadFromUrl = async function ({
   ignoreZeroVoxels = false,
   visible = true,
   colorMapNegative = "",
+  isManifest = false,
 } = {}) {
   if (url === "") {
     throw Error("url must not be empty");
   }
+
+  if (isManifest) {
+    return this.loadFromManifest({
+      url,
+      urlImgData,
+      name,
+      colorMap,
+      opacity,
+      cal_min,
+      cal_max,
+      trustCalMinMax,
+      percentileFrac,
+      ignoreZeroVoxels,
+      visible,
+      colorMapNegative,
+      isManifest,
+    });
+  }
+
   let response = await fetch(url);
   let nvimage = null;
   if (!response.ok) {
@@ -2515,15 +2600,15 @@ NVImage.loadFromFile = async function ({
   try {
     if (Array.isArray(file)) {
       for (let i = 0; i < file.length; i++) {
-        dataBuffer.push(await this.readFileAsync(file[i]));
+        dataBuffer.push(await NVImage.readFileAsync(file[i]));
       }
     } else {
-      dataBuffer = await this.readFileAsync(file);
+      dataBuffer = await NVImage.readFileAsync(file);
       name = file.name;
     }
     let pairedImgData = null;
     if (urlImgData) {
-      pairedImgData = await this.readFileAsync(urlImgData);
+      pairedImgData = await NVImage.readFileAsync(urlImgData);
     }
     nvimage = new NVImage(
       dataBuffer,

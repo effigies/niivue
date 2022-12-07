@@ -595,7 +595,7 @@ export class NVDocument {
     document.data = data;
     document.scene.sceneData = data.sceneData;
     delete document.data["sceneData"];
-    NVDocument.deserializeMeshDataObjects(document);    
+    NVDocument.deserializeMeshDataObjects(document);
     return document;
   }
 }

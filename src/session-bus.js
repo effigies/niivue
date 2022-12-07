@@ -91,10 +91,6 @@ export function SessionBus(
     this.connectToServer(serverURL, name);
     this.subscribeToServer();
     this.isConnectedToServer = true;
-    this.serverConnection$.next({
-      op: SessionBus.MESSAGE.CREATE,
-      key: this.sessionKey,
-    });
   } else {
     // local
     if (!storageAvailable("localStorage")) {
@@ -138,7 +134,7 @@ SessionBus.prototype.sendSessionMessage = function (message) {
 SessionBus.prototype.connectToServer = function (serverURL, sessionName) {
   const url = new URL(serverURL);
   url.pathname = "websockets";
-  url.search = "?session=" + sessionName;
+  url.search = "?sessionName=" + sessionName;
   this.serverConnection$ = webSocket(url.href);
   console.log(url.href);
 };
@@ -147,6 +143,16 @@ SessionBus.prototype.connectToServer = function (serverURL, sessionName) {
 SessionBus.prototype.subscribeToServer = function () {
   this.serverConnection$.subscribe({
     next: (msg) => {
+      switch (msg["op"]) {
+        case "user list":
+          for (const user of msg.users) {
+            console.log(user.userProperties);
+            console.log(
+              "user display name: " + user.userProperties["displayName"]
+            );
+          }
+          break;
+      }
       this.onMessageCallBack(msg);
     }, // Called whenever there is a message from the server.
     error: (err) => console.log(err), // Called if at any point WebSocket API signals some kind of error.

@@ -101,16 +101,18 @@ export class NVController {
   }
 
   onNewMessage(msg) {
+    console.log("msg");
+    console.log(msg);
     switch (msg.op) {
       case NVMESSAGE.ZOOM:
-        this.niivue._volScaleMultiplier = msg.zoom;
+        this.niivue.document.scene.sceneData.volScaleMultiplier = msg.zoom;
         break;
       case NVMESSAGE.CLIP_PLANE:
-        this.niivue.scene.clipPlane = msg.clipPlane;
+        this.niivue.document.scene.sceneData.clipPlane = msg.clipPlane;
         break;
       case NVMESSAGE.AZIMUTH_ELEVATION:
-        this.niivue.scene._elevation = msg.elevation;
-        this.niivue.scene._azimuth = msg.azimuth;
+        this.niivue.document.scene.sceneData.elevation = msg.elevation;
+        this.niivue.document.scene.sceneData.azimuth = msg.azimuth;
         break;
       case NVMESSAGE.FRAME_CHANGED:
         {

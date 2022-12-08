@@ -53,6 +53,7 @@
     "daikon": "^1.2.42",
     "fflate": "^0.7.3",
     "gl-matrix": "^3.4.3",
+    "lodash": "^4.17.21",
     "nifti-reader-js": "^0.5.4",
     "rxjs": "^7.4.0",
     "uuid": "^8.3.2"

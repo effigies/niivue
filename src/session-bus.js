@@ -118,11 +118,7 @@ export function SessionBus(
 SessionBus.prototype.sendSessionMessage = function (message) {
   message.from = this.userId;
   if (this.isConnectedToServer) {
-    this.serverConnection$.next({
-      ...message,
-      key: this.sessionKey,
-      userKey: this.userKey,
-    });
+    this.serverConnection$.next(message);
   } else {
     this.sendLocalMessage(message);
   }
@@ -134,7 +130,7 @@ SessionBus.prototype.sendSessionMessage = function (message) {
 SessionBus.prototype.connectToServer = function (serverURL, sessionName) {
   const url = new URL(serverURL);
   url.pathname = "websockets";
-  url.search = "?sessionName=" + sessionName;
+  url.search = `?sessionName=${sessionName}&sessionKey=${this.sessionKey}`;
   this.serverConnection$ = webSocket(url.href);
   console.log(url.href);
 };

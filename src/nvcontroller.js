@@ -7,6 +7,11 @@ import { NVMesh, NVMeshFromUrlOptions } from "./nvmesh";
 // eslint-disable-next-line no-unused-vars
 import { Niivue } from "./niivue";
 
+import { NVDocument } from "./nvdocument";
+import { NVUtilities } from "./nvutilities";
+
+import { _ } from "lodash";
+
 /**
  * Enum for sync operations
  * @readonly
@@ -26,6 +31,9 @@ const NVMESSAGE = Object.freeze({
   CUSTOM_SHADER_ADDED: 11, // "custom shader added",
   SHADER_CHANGED: 12, //"mesh shader changed",
   MESH_PROPERTY_CHANGED: 13, // "mesh property changed",
+  SESSION_JOINED: 14,
+  SESSION_STATE_UPDATED: 15,
+  SESSION_STATE_SET: 16,
 });
 
 /**
@@ -40,6 +48,7 @@ export class NVController {
     this.niivue = niivue;
     this.mediaUrlMap = new Map();
     this.isInSession = false;
+    this.isSessionOwner = false;
 
     // events for external consumers
     this.onFrameChange = () => {};
@@ -56,10 +65,11 @@ export class NVController {
     this.niivue.onClipPlaneChange = this.onClipPlaneChangeHandler.bind(this);
 
     // volume handlers
-    this.niivue.onVolumeAddedFromUrl =
-      this.onVolumeAddedFromUrlHandler.bind(this);
+    // this.niivue.onVolumeAddedFromUrl =
+    //   this.onVolumeAddedFromUrlHandler.bind(this);
     this.niivue.onVolumeWithUrlRemoved =
       this.onVolumeWithUrlRemovedHandler.bind(this);
+    this.niivue.onImageLoaded = this.onImageLoadedHandler.bind(this);
 
     // mesh handlers
     this.niivue.onMeshAddedFromUrl = this.onMeshAddedFromUrlHandler.bind(this);
@@ -103,6 +113,16 @@ export class NVController {
   onNewMessage(msg) {
     console.log("msg");
     console.log(msg);
+    // translate any messages issued from the session bus server
+    switch (msg.op) {
+      case "session connected":
+        msg.op = NVMESSAGE.SESSION_JOINED;
+        break;
+      case "session state":
+        msg.op = NVMESSAGE.SESSION_STATE_SET;
+        break;
+    }
+
     switch (msg.op) {
       case NVMESSAGE.ZOOM:
         this.niivue.document.scene.sceneData.volScaleMultiplier = msg.zoom;
@@ -140,8 +160,9 @@ export class NVController {
           }
         }
         break;
-      case NVMESSAGE.COLORMAP_CHANGED:
+      case NVMESSAGE.COLOR_MAP_CHANGED:
         {
+          console.log("color map changed handler");
           let volume = this.niivue.getMediaByUrl(msg.url);
           volume._colorMap = msg.colorMap;
           this.niivue.updateGLVolume();
@@ -193,6 +214,53 @@ export class NVController {
           msg.val,
           this.niivue.gl
         );
+        break;
+
+      case NVMESSAGE.SESSION_JOINED:
+        console.log("session joined");
+        this.isSessionOwner = msg.isOwner;
+        this.isEditor = msg.isEditor;
+        if (msg.isOwner) {
+          const sessionState = this.niivue.document.json();
+          this.sessionBus.sendSessionMessage({ sessionState });
+        }
+        break;
+      case NVMESSAGE.SESSION_STATE_SET:
+        console.log("setting session state");
+        console.log(msg.sessionState);
+        const document = NVDocument.loadFromJSON(msg.sessionState);
+        this.niivue.loadDocument(document);
+        break;
+      case NVMESSAGE.SESSION_STATE_UPDATED:
+        console.log("session state updated");
+        // console.log(this.niivue.document);
+        // this.niivue.document = _.merge(
+        //   this.niivue.document,
+        //   msg.sessionStateUpdate
+        // );
+        // console.log(this.niivue.document);
+        for (const property in msg.sessionStateUpdate) {
+          switch (property) {
+            case "sceneData":
+              this.niivue.document.scene.sceneData = _.merge(
+                this.niivue.document.scene.sceneData,
+                msg.sessionStateUpdate.sceneData
+              );
+              break;
+            case "encodedImageBlobs":
+              // imageOptionsArray must be present
+              const imageOptions = msg.sessionStateUpdate.imageOptionsArray[0];
+              const image = NVImage.loadFromBase64({
+                base64: msg.sessionStateUpdate.encodedImageBlobs[0],
+                ...imageOptions,
+              });
+              if (image) {
+                this.addVolume(image);
+                document.addImageOptions(image, imageOptions);
+              }
+              break;
+          }
+        }
         break;
     }
     this.niivue.drawScene();
@@ -257,9 +325,18 @@ export class NVController {
    */
   async onClipPlaneChangeHandler(clipPlane) {
     if (this.isInSession) {
+      // this.sessionBus.sendSessionMessage({
+      //   op: NVMESSAGE.CLIP_PLANE,
+      //   clipPlane,
+      // });
+      let sessionStateUpdate = {
+        sceneData: {
+          clipPlane,
+        },
+      };
       this.sessionBus.sendSessionMessage({
-        op: NVMESSAGE.CLIP_PLANE,
-        clipPlane,
+        op: NVMESSAGE.SESSION_STATE_UPDATED,
+        sessionStateUpdate,
       });
     }
   }
@@ -287,11 +364,26 @@ export class NVController {
   async onImageLoadedHandler(volume) {
     volume.onColorMapChange = this.onColorMapChangeHandler.bind(this);
     volume.onOpacityChange = this.onOpacityChangeHandler.bind(this);
-    if (this.isInSession && this.niivue.mediaUrlMap.has(volume)) {
-      let url = this.niivue.mediaUrlMap.get(volume);
+    if (this.isInSession && this.isEditor) {
+      // && this.niivue.mediaUrlMap.has(volume)
+      // let url = this.niivue.mediaUrlMap.get(volume);
+      // this.sessionBus.sendSessionMessage({
+      //   op: NVMESSAGE.VOLUME_ADDED_FROM_URL,
+      //   url,
+      // });
+      // get image as JSON
+      let imageOptions = this.niivue.document.getUpdatedImageOptions(volume);
+      let encodedImageBlob = NVUtilities.uint8tob64(volume.toUint8Array());
+      console.log(
+        "encoded image blob is " + encodedImageBlob.length + " bytes"
+      );
+      let sessionStateUpdate = {
+        encodedImageBlobs: JSON.stringify([encodedImageBlob]),
+        imageOptionsArray: JSON.stringify([imageOptions]),
+      };
       this.sessionBus.sendSessionMessage({
-        op: "volume with url added",
-        url,
+        op: NVMESSAGE.SESSION_STATE_UPDATED,
+        sessionStateUpdate,
       });
     }
   }

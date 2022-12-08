@@ -415,6 +415,37 @@ export class NVDocument {
   }
 
   /**
+   * Returns the options for the image that may have been updated by user
+   * @param {NVImage} image
+   * @returns {NVImageFromUrlOptions}
+   */
+  getUpdatedImageOptions(image) {
+    let imageOptions = this.getImageOptions(image);
+    if (!imageOptions) {
+      imageOptions = {
+        name: "",
+        colorMap: "gray",
+        opacity: 1.0,
+        pairedImgData: null,
+        cal_min: NaN,
+        cal_max: NaN,
+        trustCalMinMax: true,
+        percentileFrac: 0.02,
+        ignoreZeroVoxels: false,
+        visible: true,
+        useQFormNotSForm: false,
+        colorMapNegative: "",
+        imageType: NVIMAGE_TYPE.NII,
+      };
+    }
+    // update image options on current image settings
+    imageOptions.colorMap = image.colorMap;
+    imageOptions.opacity = image.opacity;
+
+    return imageOptions;
+  }
+
+  /**
    * @typedef {Object} NVDocumentData
    * @property {string[]} encodedImageBlobs base64 encoded images
    * @property {string} encodedDrawingBlob base64 encoded drawing
@@ -465,30 +496,8 @@ export class NVDocument {
 
       for (let i = 1; i < this.volumes.length; i++) {
         const volume = this.volumes[i];
-        let imageOptions = this.getImageOptions(volume);
-        if (!imageOptions) {
-          imageOptions = {
-            name: "",
-            colorMap: "gray",
-            opacity: 1.0,
-            pairedImgData: null,
-            cal_min: NaN,
-            cal_max: NaN,
-            trustCalMinMax: true,
-            percentileFrac: 0.02,
-            ignoreZeroVoxels: false,
-            visible: true,
-            useQFormNotSForm: false,
-            colorMapNegative: "",
-            imageType: NVIMAGE_TYPE.NII,
-          };
-        }
-        // update image options on current image settings
-        imageOptions.colorMap = volume.colorMap;
-        imageOptions.opacity = volume.opacity;
-
+        let imageOptions = this.getUpdatedImageOptions(volume);
         imageOptionsArray.push(imageOptions);
-
         let encodedImageBlob = NVUtilities.uint8tob64(volume.toUint8Array());
         data.encodedImageBlobs.push(encodedImageBlob);
         data.imageOptionsMap.push([volume.id, i]);

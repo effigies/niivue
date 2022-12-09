@@ -255,8 +255,8 @@ export class NVController {
                 ...imageOptions,
               });
               if (image) {
-                this.addVolume(image);
-                document.addImageOptions(image, imageOptions);
+                this.niivue.addVolume(image);
+                this.niivue.document.addImageOptions(image, imageOptions);
               }
               break;
           }
@@ -378,8 +378,8 @@ export class NVController {
         "encoded image blob is " + encodedImageBlob.length + " bytes"
       );
       let sessionStateUpdate = {
-        encodedImageBlobs: JSON.stringify([encodedImageBlob]),
-        imageOptionsArray: JSON.stringify([imageOptions]),
+        encodedImageBlobs: [encodedImageBlob],
+        imageOptionsArray: [imageOptions],
       };
       this.sessionBus.sendSessionMessage({
         op: NVMESSAGE.SESSION_STATE_UPDATED,

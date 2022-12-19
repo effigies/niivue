@@ -293,13 +293,22 @@ export class NVController {
 
   /**
    * Zoom level has changed
-   * @param {number} zoom
+   * @param {number} volScaleMultiplier
    */
-  async onZoom3DChangeHandler(zoom) {
-    if (this.isInSession) {
+  async onZoom3DChangeHandler(volScaleMultiplier) {
+    if (this.isInSession && this.isEditor) {
+      // this.sessionBus.sendSessionMessage({
+      //   op: NVMESSAGE.ZOOM,
+      //   zoom,
+      // });
+      let sessionStateUpdate = {
+        sceneData: {
+          volScaleMultiplier
+        },
+      };
       this.sessionBus.sendSessionMessage({
-        op: NVMESSAGE.ZOOM,
-        zoom,
+        op: NVMESSAGE.SESSION_STATE_UPDATED,
+        sessionStateUpdate,
       });
     }
   }
@@ -310,11 +319,21 @@ export class NVController {
    * @param {number} elevation
    */
   async onAzimuthElevationChangeHandler(azimuth, elevation) {
-    if (this.isInSession) {
+    if (this.isInSession && this.isEditor) {
+      // this.sessionBus.sendSessionMessage({
+      //   op: NVMESSAGE.AZIMUTH_ELEVATION,
+      //   azimuth,
+      //   elevation,
+      // });
+      let sessionStateUpdate = {
+        sceneData: {
+          azimuth,
+          elevation,
+        },
+      };
       this.sessionBus.sendSessionMessage({
-        op: NVMESSAGE.AZIMUTH_ELEVATION,
-        azimuth,
-        elevation,
+        op: NVMESSAGE.SESSION_STATE_UPDATED,
+        sessionStateUpdate,
       });
     }
   }
@@ -324,7 +343,7 @@ export class NVController {
    * @param {number[]} clipPlane
    */
   async onClipPlaneChangeHandler(clipPlane) {
-    if (this.isInSession) {
+    if (this.isInSession  && this.isEditor) {
       // this.sessionBus.sendSessionMessage({
       //   op: NVMESSAGE.CLIP_PLANE,
       //   clipPlane,
@@ -374,9 +393,7 @@ export class NVController {
       // get image as JSON
       let imageOptions = this.niivue.document.getUpdatedImageOptions(volume);
       let encodedImageBlob = NVUtilities.uint8tob64(volume.toUint8Array());
-      console.log(
-        "encoded image blob is " + encodedImageBlob.length + " bytes"
-      );
+      
       let sessionStateUpdate = {
         encodedImageBlobs: [encodedImageBlob],
         imageOptionsArray: [imageOptions],
@@ -447,6 +464,8 @@ export class NVController {
         url,
         colorMap,
       });
+
+      // update state with image options
     }
   }
 

@@ -226,10 +226,12 @@ export class NVController {
         }
         break;
       case NVMESSAGE.SESSION_STATE_SET:
-        console.log("setting session state");
-        console.log(msg.sessionState);
-        const document = NVDocument.loadFromJSON(msg.sessionState);
-        this.niivue.loadDocument(document);
+        {
+          console.log("setting session state");
+          console.log(msg.sessionState);
+          const document = NVDocument.loadFromJSON(msg.sessionState);
+          this.niivue.loadDocument(document);
+        }
         break;
       case NVMESSAGE.SESSION_STATE_UPDATED:
         console.log("session state updated");
@@ -248,15 +250,18 @@ export class NVController {
               );
               break;
             case "encodedImageBlobs":
-              // imageOptionsArray must be present
-              const imageOptions = msg.sessionStateUpdate.imageOptionsArray[0];
-              const image = NVImage.loadFromBase64({
-                base64: msg.sessionStateUpdate.encodedImageBlobs[0],
-                ...imageOptions,
-              });
-              if (image) {
-                this.niivue.addVolume(image);
-                this.niivue.document.addImageOptions(image, imageOptions);
+              {
+                // imageOptionsArray must be present
+                const imageOptions =
+                  msg.sessionStateUpdate.imageOptionsArray[0];
+                const image = NVImage.loadFromBase64({
+                  base64: msg.sessionStateUpdate.encodedImageBlobs[0],
+                  ...imageOptions,
+                });
+                if (image) {
+                  this.niivue.addVolume(image);
+                  this.niivue.document.addImageOptions(image, imageOptions);
+                }
               }
               break;
           }
@@ -303,7 +308,7 @@ export class NVController {
       // });
       let sessionStateUpdate = {
         sceneData: {
-          volScaleMultiplier
+          volScaleMultiplier,
         },
       };
       this.sessionBus.sendSessionMessage({
@@ -343,7 +348,7 @@ export class NVController {
    * @param {number[]} clipPlane
    */
   async onClipPlaneChangeHandler(clipPlane) {
-    if (this.isInSession  && this.isEditor) {
+    if (this.isInSession && this.isEditor) {
       // this.sessionBus.sendSessionMessage({
       //   op: NVMESSAGE.CLIP_PLANE,
       //   clipPlane,
@@ -393,7 +398,7 @@ export class NVController {
       // get image as JSON
       let imageOptions = this.niivue.document.getUpdatedImageOptions(volume);
       let encodedImageBlob = NVUtilities.uint8tob64(volume.toUint8Array());
-      
+
       let sessionStateUpdate = {
         encodedImageBlobs: [encodedImageBlob],
         imageOptionsArray: [imageOptions],

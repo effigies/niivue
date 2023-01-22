@@ -5,34 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <title>colormaps</title>
-    <style>
-      body {
-        display: flex; 
-        flex-direction: column;
-        margin: 0;
-        min-height: 100vh;
-        font-family: system-ui, Arial, Helvetica, sans-serif;
-        background: #FFFFFF;
-        }
-      header {
-        margin: 10px;
-      }
-      main {
-        flex: 1;
-        position:relative;
-        min-height: 100px;
-      }
-      footer {
-        margin: 10px;
-      }
-      canvas {
-        position: absolute;
-        cursor: crosshair;
-      }
-      canvas:focus {
-        outline: 0px;
-      }
-    </style>
+    <link rel="stylesheet" href="light.css">
   </head>
   <body>
     <noscript>
@@ -46,8 +19,7 @@
       <canvas id="gl1"></canvas>
     </main>
     <footer>
-      <p>available color maps:</p>
-      <p id="colormaps"></p>
+      <label id="colormaps"></label>
     </footer>
   </body>
 </html>
@@ -72,6 +44,7 @@
   nv1.attachTo('gl1')
   nv1.loadVolumes(volumeList1)
   nv1.setSliceType(nv1.sliceTypeMultiplanar)
+  nv1.opts.isColorbar = true
   cmaps = nv1.colorMaps()
   cmapEl = document.getElementById('colormaps')
   for (let i=0; i<cmaps.length; i++) {

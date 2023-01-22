@@ -50,7 +50,8 @@ export function NVMeshFromUrlOptions(
   opacity = 1.0,
   rgba255 = [255, 255, 255, 255],
   visible = true,
-  layers = []
+  layers = [],
+  colorbarVisible = true
 ) {
   return {
     url,
@@ -60,6 +61,7 @@ export function NVMeshFromUrlOptions(
     rgba255,
     visible,
     layers,
+    colorbarVisible,
   };
 }
 
@@ -92,9 +94,11 @@ export function NVMesh(
   connectome = null,
   dpg = null,
   dps = null,
-  dpv = null
+  dpv = null,
+  colorbarVisible = true
 ) {
   this.name = name;
+  this.colorbarVisible = colorbarVisible;
   this.id = uuidv4();
   let obj = getExtents(pts);
   this.furthestVertexFromOrigin = obj.mxDx;
@@ -563,7 +567,8 @@ NVMesh.prototype.updateMesh = function (gl) {
           let v255 = Math.round(
             (layer.values[j + frameOffset] - layer.cal_min) * scale255
           );
-          if (v255 < 0) continue;
+          if (v255 < 0 && layer.isTransparentBelowCalMin) continue;
+          v255 = Math.max(0.0, v255);
           v255 = Math.min(255.0, v255) * 4;
           let vtx = j * 28 + 24; //posNormClr is 28 bytes stride, RGBA color at offset 24,
           u8[vtx + 0] = lerp(u8[vtx + 0], lut[v255 + 0], opacity);
@@ -595,10 +600,24 @@ NVMesh.prototype.updateMesh = function (gl) {
       if (layer.useNegativeCmap) {
         let lut = cmapper.colormap(layer.colorMapNegative);
         if (!layer.isOutlineBorder) {
+          let mn = layer.cal_min;
+          let mx = layer.cal_max;
+
+          if (isFinite(layer.cal_minNeg) && isFinite(layer.cal_minNeg)) {
+            mn = -layer.cal_minNeg;
+            mx = -layer.cal_maxNeg;
+          }
+          if (mx < mn) {
+            [mn, mx] = [mx, mn];
+          }
+          let scale255neg = 255.0 / (mx - mn);
           for (let j = 0; j < nvtx; j++) {
             let v255 = Math.round(
-              (-layer.values[j + frameOffset] - layer.cal_min) * scale255
+              (-layer.values[j + frameOffset] - mn) * scale255neg
             );
+            /*let v255 = Math.round(
+              (-layer.values[j + frameOffset] - layer.cal_min) * scale255
+            );*/
             if (v255 < 0) continue;
             v255 = Math.min(255.0, v255) * 4;
             let vtx = j * 28 + 24; //posNormClr is 28 bytes stride, RGBA color at offset 24,
@@ -661,8 +680,8 @@ NVMesh.prototype.reverseFaces = function (gl) {
 // adjust attributes of a mesh layer. invoked by niivue.setMeshLayerProperty()
 NVMesh.prototype.setLayerProperty = function (id, key, val, gl) {
   let layer = this.layers[id];
-  if (!layer.hasOwnProperty(key)) {
-    console.log("mesh does not have property ", key, layer);
+  if (!layer || !layer.hasOwnProperty(key)) {
+    console.log("mesh does not have property ", key, " for layer ", layer);
     return;
   }
   layer[key] = val;
@@ -936,7 +955,18 @@ NVMesh.readTCK = function (buffer) {
     console.log("Not a valid TCK file");
     return;
   }
-  while (pos < len && !line.startsWith("END")) line = readStr();
+  let offset = -1; // "file: offset" is REQUIRED
+  while (pos < len && !line.includes("END")) {
+    line = readStr();
+    if (line.toLowerCase().startsWith("file:")) {
+      offset = parseInt(line.split(" ").pop());
+    }
+  }
+  if (offset < 20) {
+    console.log("Not a valid TCK file (missing file offset)");
+    return;
+  }
+  pos = offset;
   var reader = new DataView(buffer);
   //read and transform vertex positions
   let npt = 0;
@@ -982,9 +1012,10 @@ NVMesh.readTRK = function (buffer) {
     //e.g. TRK.gz
     let raw;
     if (magic === 4247762216) {
-      //zstd
-      raw = fzstd.decompress(new Uint8Array(buffer));
-      raw = new Uint8Array(raw);
+      //e.g. TRK.zstd
+      //raw = fzstd.decompress(new Uint8Array(buffer));
+      //raw = new Uint8Array(raw);
+      throw new Error("zstd TRK decompression is not supported");
     } else raw = fflate.decompressSync(new Uint8Array(buffer));
     buffer = raw.buffer;
     reader = new DataView(buffer);
@@ -1049,11 +1080,14 @@ NVMesh.readTRK = function (buffer) {
   }
   var vox2mmMat = mat4.create();
   mat4.mul(vox2mmMat, mat, zoomMat);
+  //translation is in mm and not influenced by resolution
+  vox2mmMat[3] = mat[3];
+  vox2mmMat[7] = mat[7];
+  vox2mmMat[11] = mat[11];
   let i32 = null;
   let f32 = null;
   i32 = new Int32Array(buffer.slice(hdr_sz));
   f32 = new Float32Array(i32.buffer);
-
   let ntracks = i32.length;
   //read and transform vertex positions
   let i = 0;
@@ -1418,7 +1452,13 @@ NVMesh.readCURV = function (buffer, n_vert) {
       "Unable to recognize file type: does not appear to be FreeSurfer format."
     );
   if (n_vert !== n_vertex) {
-    console.log("CURV file has different number of vertices than mesh");
+    console.log(
+      "CURV file has different number of vertices ( " +
+        n_vertex +
+        ")than mesh (" +
+        n_vert +
+        ")"
+    );
     return;
   }
   if (buffer.byteLength < 15 + 4 * n_vertex * n_time) {
@@ -1441,7 +1481,8 @@ NVMesh.readCURV = function (buffer, n_vert) {
   //normalize and invert then sqrt
   let scale = 1.0 / (mx - mn);
   for (var i = 0; i < f32.length; i++)
-    f32[i] = Math.sqrt(1.0 - (f32[i] - mn) * scale);
+    //f32[i] = Math.sqrt(1.0 - ((f32[i] - mn) * scale));
+    f32[i] = 1.0 - (f32[i] - mn) * scale;
   return f32;
 }; // readCURV()
 
@@ -2074,6 +2115,8 @@ NVMesh.readLayer = function (
   isOutlineBorder = false
 ) {
   let layer = [];
+  layer.isTransparentBelowCalMin = true;
+  layer.colorbarVisible = true;
   let n_vert = nvmesh.vertexCount / 3; //each vertex has XYZ component
   if (n_vert < 3) return;
   var re = /(?:\.([^.]+))?$/;
@@ -2085,9 +2128,10 @@ NVMesh.readLayer = function (
   }
   if (ext === "MZ3") layer.values = this.readMZ3(buffer, n_vert);
   else if (ext === "ANNOT") layer.values = this.readANNOT(buffer, n_vert);
-  else if (ext === "CRV" || ext === "CURV")
+  else if (ext === "CRV" || ext === "CURV") {
     layer.values = this.readCURV(buffer, n_vert);
-  else if (ext === "GII") layer.values = this.readGII(buffer, n_vert);
+    layer.isTransparentBelowCalMin = false;
+  } else if (ext === "GII") layer.values = this.readGII(buffer, n_vert);
   else if (ext === "MGH" || ext === "MGZ")
     layer.values = this.readMGH(buffer, n_vert);
   else if (ext === "NII") layer.values = this.readNII(buffer, n_vert);
@@ -2108,12 +2152,15 @@ NVMesh.readLayer = function (
     mn = Math.min(mn, layer.values[i]);
     mx = Math.max(mx, layer.values[i]);
   }
+  //console.log('layer range: ', mn, mx);
   layer.global_min = mn;
   layer.global_max = mx;
   layer.cal_min = cal_min;
   if (!cal_min) layer.cal_min = mn;
   layer.cal_max = cal_max;
   if (!cal_max) layer.cal_max = mx;
+  layer.cal_minNeg = NaN;
+  layer.cal_maxNeg = NaN;
   layer.opacity = opacity;
   layer.colorMap = colorMap;
   layer.colorMapNegative = colorMapNegative;
@@ -2682,6 +2729,8 @@ NVMesh.readMGH = function (buffer, n_vert = 0) {
   let depth = Math.max(1, reader.getInt32(12, false));
   let nframes = Math.max(1, reader.getInt32(16, false));
   let mtype = reader.getInt32(20, false);
+  let voxoffset = 284; //ALWAYS fixed header size
+  let isLittleEndian = false; //ALWAYS byte order is BIG ENDIAN
   if (version !== 1 || mtype < 0 || mtype > 4)
     console.log("Not a valid MGH file");
   let nvert = width * height * depth * nframes;
@@ -3001,7 +3050,13 @@ NVMesh.readGII = function (buffer, n_vert = 0) {
   let dataType = 0;
   let isLittleEndian = true;
   let isGzip = false;
+  //let FreeSurferMatrix = [];
   let nvert = 0;
+  //FreeSurfer versions after 20221225 disambiguate if transform has been applied
+  // "./mris_convert --to-scanner" store raw vertex positions in scanner space, so transforms should be ignored.
+  //  FreeSurfer versions after 20221225 report that the transform is applied by reporting:
+  //   <DataSpace><![CDATA[NIFTI_XFORM_SCANNER_ANAT
+  let isDataSpaceScanner = false;
   //let isAscii = false;
   while (pos < len) {
     line = readStr();
@@ -3108,6 +3163,32 @@ NVMesh.readGII = function (buffer, n_vert = 0) {
       if (!line.includes("CDATA[")) continue;
       if (e >= 0) FreeSurferTranlate[e] = parseFloat(readBracketTag("CDATA["));
     }
+    //<TransformedSpace>
+    if (
+      line.startsWith("<DataSpace") &&
+      line.includes("NIFTI_XFORM_SCANNER_ANAT")
+    ) {
+      isDataSpaceScanner = true;
+    }
+    /*
+    //in theory, matrix can store rotations, zooms, but in practice translation so redundant with VolGeomC_*
+    if (line.startsWith("<MatrixData>")) {
+      //yet another kludge for undocumented FreeSurfer transform
+      while (pos < len && !line.endsWith("</MatrixData>"))
+        line += " " + readStrX();
+      line = line.replace("<MatrixData>", "");
+      line = line.replace("</MatrixData>", "");
+      line = line.replace("  ", " ");
+      line = line.trim();
+      var floats = line.split(/\s+/).map(parseFloat);
+      if (floats.length != 16)
+        console.log("Expected MatrixData to have 16 items: '" + line + "'");
+      else {
+        FreeSurferMatrix = mat4.create();
+        for (var i = 0; i < 16; i++) FreeSurferMatrix[i] = floats[i];
+      }
+    }*/
+
     if (
       line.startsWith("<Name") &&
       line.includes("AnatomicalStructurePrimary")
@@ -3148,6 +3229,7 @@ NVMesh.readGII = function (buffer, n_vert = 0) {
   if (n_vert > 0) return scalars;
   if (
     positions.length > 2 &&
+    !isDataSpaceScanner &&
     (FreeSurferTranlate[0] != 0 ||
       FreeSurferTranlate[1] != 0 ||
       FreeSurferTranlate[2] != 0)
@@ -3167,7 +3249,7 @@ NVMesh.readGII = function (buffer, n_vert = 0) {
     positions,
     indices,
     scalars,
-  };
+  }; //MatrixData
 }; // readGII()
 
 // not included in public docs
@@ -3181,6 +3263,9 @@ NVMesh.loadConnectomeFromJSON = async function (
   visible = true
 ) {
   if (json.hasOwnProperty("name")) name = json.name;
+  if (!json.hasOwnProperty("nodes")) {
+    throw Error("not a valid jcon connectome file");
+  }
   return new NVMesh([], [], name, [], opacity, visible, gl, json);
 }; //loadConnectomeFromJSON()
 
@@ -3204,6 +3289,15 @@ NVMesh.readMesh = async function (
     ext = re.exec(name.slice(0, -3))[1]; //img.trk.gz -> img.trk
     ext = ext.toUpperCase();
   }
+  if (ext === "JCON")
+    return await this.loadConnectomeFromJSON(
+      JSON.parse(new TextDecoder().decode(buffer)),
+      gl,
+      name,
+      "",
+      opacity,
+      visible
+    );
   if (ext === "TCK" || ext === "TRK" || ext === "TRX" || ext === "TRACT") {
     if (ext === "TCK") obj = this.readTCK(buffer);
     else if (ext === "TRACT") obj = this.readTRACT(buffer);
@@ -3478,7 +3572,20 @@ NVMesh.loadFromUrl = async function ({
   layers = [],
 } = {}) {
   let urlParts = url.split("/"); // split url parts at slash
-  name = urlParts.slice(-1)[0]; // name will be last part of url (e.g. some/url/image.nii.gz --> image.nii.gz)
+  if (name === "") {
+    try {
+      // if a full url like https://domain/path/file.nii.gz?query=filter
+      // parse the url and get the pathname component without the query
+      urlParts = new URL(url).pathname.split("/");
+    } catch (e) {
+      // if a relative url then parse the path (assuming no query)
+      urlParts = url.split("/");
+    }
+    name = urlParts.slice(-1)[0]; // name will be last part of url (e.g. some/url/image.nii.gz --> image.nii.gz
+    if (name.indexOf("?") > -1) {
+      name = name.slice(0, name.indexOf("?")); //remove query string if any
+    }
+  }
   if (url === "") throw Error("url must not be empty");
   if (gl === null) throw Error("gl context is null");
   //TRX format is special (its a zip archive of multiple files)
@@ -3493,7 +3600,25 @@ NVMesh.loadFromUrl = async function ({
     response = await fetch(layers[i].url);
     if (!response.ok) throw Error(response.statusText);
     buffer = await response.arrayBuffer();
-    urlParts = layers[i].url.split("/");
+    let layerName = null;
+    if (layers[i].hasOwnProperty("name") && layers[i].name !== "") {
+      layerName = layers[i].name;
+    } else {
+      //urlParts = layers[i].url.split("/");
+      //layerName = urlParts.slice(-1)[0];
+      try {
+        // if a full url like https://domain/path/file.nii.gz?query=filter
+        // parse the url and get the pathname component without the query
+        urlParts = new URL(layers[i].url).pathname.split("/");
+      } catch (e) {
+        // if a relative url then parse the path (assuming no query)
+        urlParts = layers[i].url.split("/");
+      }
+      layerName = urlParts.slice(-1)[0]; // name will be last part of url (e.g. some/url/image.nii.gz --> image.nii.gz
+    }
+    if (layerName.indexOf("?") > -1) {
+      layerName = layerName.slice(0, layerName.indexOf("?")); //remove query string if any
+    }
     let opacity = 0.5;
     if (layers[i].hasOwnProperty("opacity")) opacity = layers[i].opacity;
     let colorMap = "warm";
@@ -3508,9 +3633,8 @@ NVMesh.loadFromUrl = async function ({
     if (layers[i].hasOwnProperty("cal_min")) cal_min = layers[i].cal_min;
     let cal_max = null;
     if (layers[i].hasOwnProperty("cal_max")) cal_max = layers[i].cal_max;
-
     this.readLayer(
-      urlParts.slice(-1)[0],
+      layerName,
       buffer,
       nvmesh,
       opacity,

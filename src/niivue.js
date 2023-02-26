@@ -2543,7 +2543,6 @@ Niivue.prototype.mouseDown = function mouseDown(x, y) {
 Niivue.prototype.mouseMove = function mouseMove(x, y) {
   x *= this.uiData.dpr;
   y *= this.uiData.dpr;
-  
 
   if (this.inRenderTile(x, y) < 0) return;
   let dx = (x - this.mousePos[0]) / this.uiData.dpr;
@@ -6445,7 +6444,6 @@ Niivue.prototype.draw2D = function (
     screen.mnMM[1] /= zoom;
     screen.mxMM[1] /= zoom;
   }
-
   let sliceDim = 2; //axial depth is NIfTI k dimension
   if (axCorSag === SLICE_TYPE.CORONAL) sliceDim = 1; //sagittal depth is NIfTI j dimension
   if (axCorSag === SLICE_TYPE.SAGITTAL) sliceDim = 0; //sagittal depth is NIfTI i dimension
@@ -6610,7 +6608,7 @@ Niivue.prototype.calculateMvpMatrix = function (
       scale,
       -scale / whratio,
       scale / whratio,
-      0.01,
+      scale * 0.01,
       scale * 8.0
     );
   //Wide window: "landscape" mode, height constrains
@@ -6621,10 +6619,9 @@ Niivue.prototype.calculateMvpMatrix = function (
       scale * whratio,
       -scale,
       scale,
-      0.01,
+      scale * 0.01,
       scale * 8.0
     );
-
   const modelMatrix = mat.mat4.create();
   modelMatrix[0] = -1; //mirror X coordinate
   //push the model away from the camera so camera not inside model

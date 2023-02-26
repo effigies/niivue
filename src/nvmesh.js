@@ -1171,7 +1171,7 @@ function readTxtVTK(buffer) {
   while (v < nvert * 3) {
     pos++;
     let str = lines[pos].trim();
-    let pts = str.split(" ");
+    let pts = str.trim().split(/\s+/);
     for (let i = 0; i < pts.length; i++) {
       if (v >= nvert3) break;
       positions[v] = parseFloat(pts[i]);
@@ -1197,7 +1197,7 @@ function readTxtVTK(buffer) {
       while (c < n_count) {
         str = lines[pos].trim();
         pos++;
-        let items = str.split(" ");
+        let items = str.trim().split(/\s+/);
         for (let i = 0; i < items.length; i++) {
           offsetPt0[c] = parseInt(items[i]);
           c++;
@@ -2180,7 +2180,8 @@ NVMesh.readOFF = function (buffer) {
   let pts = [];
   let t = [];
   let i = 0;
-  if (!lines[i].startsWith("OFF")) {
+  //first line signature "OFF", but R freesurfer package uses "# OFF"
+  if (!lines[i].includes("OFF")) {
     console.log("File does not start with OFF");
   } else i++;
   let items = lines[i].split(" ");
@@ -2405,7 +2406,7 @@ NVMesh.readSTL = function (buffer) {
   if (buffer.byteLength < 80 + 4 + 50)
     throw new Error("File too small to be STL: bytes = " + buffer.byteLength);
   var reader = new DataView(buffer);
-  let sig = reader.getUint32(80, true);
+  let sig = reader.getUint32(0, true);
   if (sig === 1768714099)
     throw new Error("Only able to read binary (not ASCII) STL files.");
   var ntri = reader.getUint32(80, true);

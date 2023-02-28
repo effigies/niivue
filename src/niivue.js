@@ -73,6 +73,7 @@ const log = new Log();
 const cmapper = new colortables();
 const MESH_EXTENSIONS = [
   "ASC",
+  "BYU",
   "DFS",
   "FSM",
   "PIAL",
@@ -81,7 +82,10 @@ const MESH_EXTENSIONS = [
   "SMOOTHWM",
   "SPHERE",
   "WHITE",
+  "G",
+  "GEO",
   "GII",
+  "ICO",
   "MZ3",
   "NV",
   "OBJ",
@@ -91,6 +95,7 @@ const MESH_EXTENSIONS = [
   "STL",
   "TCK",
   "TRACT",
+  "TRI",
   "TRK",
   "TRX",
   "VTK",
